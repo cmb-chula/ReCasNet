@@ -1,0 +1,80 @@
+# dataset settings
+dataset_type = 'CMVInferenceDataset'
+data_root = 'data/CMV/'
+img_norm_cfg = dict(
+    mean=[0, 0, 0], std=[1, 1, 1], to_rgb=True)
+train_pipeline = [
+    dict(type='LoadMitoticSlide', to_float32=True),
+    dict(type='LoadAnnotations', with_bbox=True),
+    dict(type='Resize', img_scale=(512, 512), keep_ratio=True),
+    dict(type='RandomFlip', flip_ratio=0.5),
+    # dict(type='RandomReplace', dataset_path = './data/mitotic/DataODAEL_small/train'),
+    # dict(type='RandomFlip', flip_ratio=0.5, direction = 'horizontal'),
+
+    # dict(type='RandomRotate'),
+    dict(type='Normalize', **img_norm_cfg),
+    dict(type='Pad', size_divisor=32),
+    dict(type='PhotoMetricDistortion'),
+    dict(type='DefaultFormatBundle'),
+    dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels']),
+]
+val_pipeline = [
+    dict(type='LoadMitoticSlide', to_float32=True),
+    dict(
+        type='MultiScaleFlipAug',
+        img_scale= (512, 512),
+        flip=False,
+        transforms=[
+            dict(type='Resize', keep_ratio=True),
+            dict(type='RandomFlip'),
+            dict(type='Normalize', **img_norm_cfg),
+            dict(type='Pad', size_divisor=32),
+            dict(type='ImageToTensor', keys=['img']),
+            dict(type='Collect', keys=['img']),
+        ])
+]
+
+test_pipeline = [
+    dict(type='LoadMitoticSlide', to_float32=True),
+    dict(
+
+        type='MultiScaleFlipAug',
+        img_scale= (512, 512),
+        flip=False,
+        transforms=[
+            dict(type='Resize', keep_ratio=True),
+            dict(type='RandomFlip'),
+            dict(type='Normalize', **img_norm_cfg),
+            dict(type='Pad', size_divisor=32),
+            dict(type='ImageToTensor', keys=['img']),
+            dict(type='Collect', keys=['img']),
+        ])
+]
+
+
+
+data = dict(
+    samples_per_gpu=4,
+    workers_per_gpu=2,
+    train=dict(
+        type='RepeatDataset',
+        times=2,
+        dataset=dict(
+            type='CMVInferenceDataset',
+            ann_file=[
+                data_root + 'train_dumb.txt',
+            ],
+            img_prefix=[data_root],
+            pipeline=train_pipeline)),
+    val=dict(
+        type='CMVInferenceDataset',
+        ann_file=data_root + 'test.txt',
+        img_prefix=data_root ,
+        pipeline=val_pipeline),
+    test=dict(
+        type='CMVInferenceDataset',
+        ann_file=data_root + 'CMV_train_all_patch.txt',
+        img_prefix=data_root,
+        pipeline=test_pipeline))
+
+evaluation = dict(interval=1, metric='mAP')
