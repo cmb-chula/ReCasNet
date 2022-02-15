@@ -15,13 +15,13 @@ def get_intersection(query, db, overlap_dist):
     res = np.where(dist <= overlap_dist)[0]
     return res        
 
-def annotate(file, slide_name, query_center, gt_bbox, gt_bbox_center, overlap_dist):
+def annotate(file, slide_name, query_center, gt_bbox, gt_bbox_center, overlap_dist, annotation_path):
     ''' Generate XML label from w.r.t. the sample patch center of size 512 x 512
     '''
     top_x, top_y = query_center[0] - overlap_dist, query_center[1] - overlap_dist
     intersected_idx = get_intersection(query_center, gt_bbox_center, overlap_dist)   
     intersected_object = gt_bbox[intersected_idx]
-    xml_path = 'Annotations/' + slide_name.split('.')[0] + '_{}_{}.xml'.format(top_x, top_y)
+    xml_path = annotation_path + slide_name.split('.')[0] + '_{}_{}.xml'.format(top_x, top_y)
     writer = Writer(xml_path, int(overlap_dist*2), (overlap_dist*2))
     for bbox in  intersected_object:
         xmin ,ymin, xmax, ymax = bbox
@@ -47,6 +47,7 @@ nb_sample = args["nbsample"]
 hard_neg_ratio = args["hnratio"]
 random_ratio = args["rratio"]
 overlap_dist = int(args["windowsize"] / 2)
+annotation_path = 'data/dataset/{}/Annotations/'.format(dataset)
 
 if(dataset == 'CMC'):
     metadata = pickle.load(open('data/database/CMC_label.pkl', 'rb'))
@@ -59,7 +60,7 @@ elif(dataset == 'CCMCT'):
 else:
     raise Exception("Only CMC and CCMCT datasets are supported.")
 
-try: os.makedirs('Annotations/') 
+try: os.makedirs(annotation_path) 
 except: pass
 
 for i in df.values:
@@ -73,7 +74,7 @@ for i in df.values:
         metadata[name]['hard_neg'].append(np.array([xmin, ymin, xmax, ymax]))
         
 print("Generate train text file")
-f = open('train.txt', "wb")
+f = open('data/dataset/{}/train.txt'.format(dataset), "wb")
 for slide_name in metadata:
     if(metadata[slide_name]['set'] == 'test'):continue
     slide = openslide.OpenSlide(WSI_path + slide_name)
@@ -91,20 +92,20 @@ for slide_name in metadata:
     
     for _ in range(int(nb_sample * random_ratio)):
         query_center = np.array([np.random.randint(256, width), np.random.randint(256, height)])
-        annotate(f, slide_name, query_center, gt_bbox, gt_bbox_center, overlap_dist)
+        annotate(f, slide_name, query_center, gt_bbox, gt_bbox_center, overlap_dist, annotation_path)
         
     for _ in range(int(nb_sample * hard_neg_ratio)):
         query_center = np.array(hard_bbox_center[np.random.randint(len(hard_bbox_center))], dtype = np.int) + np.random.randint(-192, 192, 2)
-        annotate(f, slide_name, query_center, gt_bbox, gt_bbox_center, overlap_dist)
+        annotate(f, slide_name, query_center, gt_bbox, gt_bbox_center, overlap_dist, annotation_path)
 
     for _ in range(int(nb_sample * (1 - (random_ratio + hard_neg_ratio)))):
         query_center = np.array(gt_bbox_center[np.random.randint(len(gt_bbox_center))], dtype = np.int) + np.random.randint(-192, 192, 2)
-        annotate(f, slide_name, query_center, gt_bbox, gt_bbox_center, overlap_dist)
+        annotate(f, slide_name, query_center, gt_bbox, gt_bbox_center, overlap_dist, annotation_path)
         
 f.close()
 
 print("Generate test text file")
-f2 = open('test.txt', "wb")
+f2 = open('data/dataset/{}/test.txt'.format(dataset), "wb")
 for slide_name in metadata:
     if(metadata[slide_name]['set'] == 'train'):continue
     slide = openslide.OpenSlide(WSI_path + slide_name)
@@ -116,7 +117,7 @@ for slide_name in metadata:
 f2.close()
 
 print("Generate inference train text file")
-f2 = open('inference_train.txt', "wb")
+f2 = open('data/dataset/{}/inference_train.txt'.format(dataset), "wb")
 for slide_name in metadata:
     if(metadata[slide_name]['set'] == 'test'):continue
     slide = openslide.OpenSlide(WSI_path + slide_name)

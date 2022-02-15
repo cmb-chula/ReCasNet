@@ -23,6 +23,14 @@ wget -P data/database/ https://github.com/DeepPathology/MITOS_WSI_CMC/raw/master
 wget -P data/database/ https://github.com/DeepPathology/MITOS_WSI_CCMCT/raw/master/databases/MITOS_WSI_CCMCT_ODAEL.sqlite
 ```
 
+The annotation in a trainable format could be obtain by running the following command:
+
+```
+python3 tools/data_preparation/gen_data_from_SQL.py -d CMC # generate label in pickle form (could be skipped)
+python3 tools/data_preparation/gen_csv.py -d CMC
+python3 tools/data_preparation/generate_training_key.py -d CMC
+```
+
 ## Training
 ### Detection Stage Training
 

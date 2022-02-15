@@ -6,8 +6,9 @@ from SlideRunner.dataAccess.annotations import *
 
 
 def get_slides( database:"Database", positive_class:int=2, basepath:str='WSI'):
-
-
+    '''
+    code from https://github.com/DeepPathology/MITOS_WSI_CMC/blob/master/lib/sampling.py
+    '''
     lbl_bbox=list()
     files=list()
     slides=list()
