@@ -3,7 +3,6 @@ import numpy as np
 from .base_loader import BaseLoader
 from sklearn.utils import shuffle
 import numpy as np
-import imgaug.augmenters as iaa
 import tensorflow as tf
 import openslide
 
