@@ -1,11 +1,11 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 import torch
 
 from mmdet.utils import util_mixins
 
 
 class AssignResult(util_mixins.NiceRepr):
-    """
-    Stores assignments between predicted and truth boxes.
+    """Stores assignments between predicted and truth boxes.
 
     Attributes:
         num_gts (int): the number of truth boxes considered when computing this
@@ -50,25 +50,21 @@ class AssignResult(util_mixins.NiceRepr):
 
     @property
     def num_preds(self):
-        """
-        Return the number of predictions in this assignment
-        """
+        """int: the number of predictions in this assignment"""
         return len(self.gt_inds)
 
     def set_extra_property(self, key, value):
-        """Set user-defined new property"""
+        """Set user-defined new property."""
         assert key not in self.info
         self._extra_properties[key] = value
 
     def get_extra_property(self, key):
-        """Get user-defined property"""
+        """Get user-defined property."""
         return self._extra_properties.get(key, None)
 
     @property
     def info(self):
-        """
-        Returns a dictionary of info about the object
-        """
+        """dict: a dictionary of info about the object"""
         basic_info = {
             'num_gts': self.num_gts,
             'num_preds': self.num_preds,
@@ -80,9 +76,7 @@ class AssignResult(util_mixins.NiceRepr):
         return basic_info
 
     def __nice__(self):
-        """
-        Create a "nice" summary string describing this assign result
-        """
+        """str: a "nice" summary string describing this assign result"""
         parts = []
         parts.append(f'num_gts={self.num_gts!r}')
         if self.gt_inds is None:
@@ -107,7 +101,7 @@ class AssignResult(util_mixins.NiceRepr):
         Args:
             num_preds: number of predicted boxes
             num_gts: number of true boxes
-            p_ignore (float): probability of a predicted box assinged to an
+            p_ignore (float): probability of a predicted box assigned to an
                 ignored truth
             p_assigned (float): probability of a predicted box not being
                 assigned
@@ -146,6 +140,7 @@ class AssignResult(util_mixins.NiceRepr):
                 labels = None
         else:
             import numpy as np
+
             # Create an overlap for each predicted box
             max_overlaps = torch.from_numpy(rng.rand(num_preds))
 
@@ -170,7 +165,7 @@ class AssignResult(util_mixins.NiceRepr):
             true_idxs = np.arange(num_gts)
             rng.shuffle(true_idxs)
             true_idxs = torch.from_numpy(true_idxs)
-            gt_inds[is_assigned] = true_idxs[:n_assigned]
+            gt_inds[is_assigned] = true_idxs[:n_assigned].long()
 
             gt_inds = torch.from_numpy(
                 rng.randint(1, num_gts + 1, size=num_preds))
@@ -195,6 +190,11 @@ class AssignResult(util_mixins.NiceRepr):
         return self
 
     def add_gt_(self, gt_labels):
+        """Add ground truth as assigned results.
+
+        Args:
+            gt_labels (torch.Tensor): Labels of gt boxes
+        """
         self_inds = torch.arange(
             1, len(gt_labels) + 1, dtype=torch.long, device=gt_labels.device)
         self.gt_inds = torch.cat([self_inds, self.gt_inds])

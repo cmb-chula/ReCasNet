@@ -5,7 +5,6 @@ _base_ = [
 # model settings
 model = dict(
     type='FOVEA',
-    pretrained='torchvision://resnet50',
     backbone=dict(
         type='ResNet',
         depth=50,
@@ -14,7 +13,8 @@ model = dict(
         frozen_stages=1,
         norm_cfg=dict(type='BN', requires_grad=True),
         norm_eval=True,
-        style='pytorch'),
+        style='pytorch',
+        init_cfg=dict(type='Pretrained', checkpoint='torchvision://resnet50')),
     neck=dict(
         type='FPN',
         in_channels=[256, 512, 1024, 2048],
@@ -39,14 +39,14 @@ model = dict(
             gamma=1.50,
             alpha=0.4,
             loss_weight=1.0),
-        loss_bbox=dict(type='SmoothL1Loss', beta=0.11, loss_weight=1.0)))
-# training and testing settings
-train_cfg = dict()
-test_cfg = dict(
-    nms_pre=1000,
-    score_thr=0.05,
-    nms=dict(type='nms', iou_thr=0.5),
-    max_per_img=100)
+        loss_bbox=dict(type='SmoothL1Loss', beta=0.11, loss_weight=1.0)),
+    # training and testing settings
+    train_cfg=dict(),
+    test_cfg=dict(
+        nms_pre=1000,
+        score_thr=0.05,
+        nms=dict(type='nms', iou_threshold=0.5),
+        max_per_img=100))
 data = dict(samples_per_gpu=4, workers_per_gpu=4)
 # optimizer
 optimizer = dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001)

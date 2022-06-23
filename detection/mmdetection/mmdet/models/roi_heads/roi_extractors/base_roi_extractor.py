@@ -1,22 +1,29 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 from abc import ABCMeta, abstractmethod
 
 import torch
 import torch.nn as nn
+from mmcv import ops
+from mmcv.runner import BaseModule
 
-from mmdet import ops
 
-
-class BaseRoIExtractor(nn.Module, metaclass=ABCMeta):
+class BaseRoIExtractor(BaseModule, metaclass=ABCMeta):
     """Base class for RoI extractor.
 
     Args:
         roi_layer (dict): Specify RoI layer type and arguments.
         out_channels (int): Output channels of RoI layers.
         featmap_strides (int): Strides of input feature maps.
+        init_cfg (dict or list[dict], optional): Initialization config dict.
+            Default: None
     """
 
-    def __init__(self, roi_layer, out_channels, featmap_strides):
-        super(BaseRoIExtractor, self).__init__()
+    def __init__(self,
+                 roi_layer,
+                 out_channels,
+                 featmap_strides,
+                 init_cfg=None):
+        super(BaseRoIExtractor, self).__init__(init_cfg)
         self.roi_layers = self.build_roi_layers(roi_layer, featmap_strides)
         self.out_channels = out_channels
         self.featmap_strides = featmap_strides
@@ -24,21 +31,18 @@ class BaseRoIExtractor(nn.Module, metaclass=ABCMeta):
 
     @property
     def num_inputs(self):
-        """Number of input feature maps."""
+        """int: Number of input feature maps."""
         return len(self.featmap_strides)
-
-    def init_weights(self):
-        pass
 
     def build_roi_layers(self, layer_cfg, featmap_strides):
         """Build RoI operator to extract feature from each level feature map.
 
         Args:
             layer_cfg (dict): Dictionary to construct and config RoI layer
-                operation. Options are modules under ``mmdet/ops`` such as
+                operation. Options are modules under ``mmcv/ops`` such as
                 ``RoIAlign``.
-            featmap_strides (int): The stride of input feature map w.r.t to the
-                original image size, which would be used to scale RoI
+            featmap_strides (List[int]): The stride of input feature map w.r.t
+                to the original image size, which would be used to scale RoI
                 coordinate (original image coordinate system) to feature
                 coordinate system.
 

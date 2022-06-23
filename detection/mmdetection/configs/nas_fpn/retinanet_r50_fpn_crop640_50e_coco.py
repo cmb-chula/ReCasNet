@@ -5,7 +5,6 @@ _base_ = [
 cudnn_benchmark = True
 norm_cfg = dict(type='BN', requires_grad=True)
 model = dict(
-    pretrained='torchvision://resnet50',
     backbone=dict(
         type='ResNet',
         depth=50,
@@ -14,14 +13,15 @@ model = dict(
         frozen_stages=1,
         norm_cfg=norm_cfg,
         norm_eval=False,
-        style='pytorch'),
+        style='pytorch',
+        init_cfg=dict(type='Pretrained', checkpoint='torchvision://resnet50')),
     neck=dict(
         relu_before_extra_convs=True,
         no_norm_on_lateral=True,
         norm_cfg=norm_cfg),
-    bbox_head=dict(type='RetinaSepBNHead', num_ins=5, norm_cfg=norm_cfg))
-# training and testing settings
-train_cfg = dict(assigner=dict(neg_iou_thr=0.5))
+    bbox_head=dict(type='RetinaSepBNHead', num_ins=5, norm_cfg=norm_cfg),
+    # training and testing settings
+    train_cfg=dict(assigner=dict(neg_iou_thr=0.5)))
 # dataset settings
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
@@ -77,4 +77,9 @@ lr_config = dict(
     warmup_ratio=0.1,
     step=[30, 40])
 # runtime settings
-total_epochs = 50
+runner = dict(type='EpochBasedRunner', max_epochs=50)
+
+# NOTE: `auto_scale_lr` is for automatically scaling LR,
+# USER SHOULD NOT CHANGE ITS VALUES.
+# base_batch_size = (8 GPUs) x (8 samples per GPU)
+auto_scale_lr = dict(base_batch_size=64)

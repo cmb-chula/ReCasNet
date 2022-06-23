@@ -3,7 +3,7 @@ model = dict(
     roi_head=dict(
         semantic_roi_extractor=dict(
             type='SingleRoIExtractor',
-            roi_layer=dict(type='RoIAlign', out_size=14, sample_num=0),
+            roi_layer=dict(type='RoIAlign', output_size=14, sampling_ratio=0),
             out_channels=256,
             featmap_strides=[8]),
         semantic_head=dict(
@@ -14,8 +14,8 @@ model = dict(
             in_channels=256,
             conv_out_channels=256,
             num_classes=183,
-            ignore_label=255,
-            loss_weight=0.2)))
+            loss_seg=dict(
+                type='CrossEntropyLoss', ignore_index=255, loss_weight=0.2))))
 data_root = 'data/coco/'
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)

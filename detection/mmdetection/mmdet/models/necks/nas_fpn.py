@@ -1,16 +1,33 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 import torch.nn as nn
-from mmcv.cnn import ConvModule, caffe2_xavier_init
+from mmcv.cnn import ConvModule
+from mmcv.ops.merge_cells import GlobalPoolingCell, SumCell
+from mmcv.runner import BaseModule, ModuleList
 
-from mmdet.ops.merge_cells import GlobalPoolingCell, SumCell
 from ..builder import NECKS
 
 
 @NECKS.register_module()
-class NASFPN(nn.Module):
+class NASFPN(BaseModule):
     """NAS-FPN.
 
-    NAS-FPN: Learning Scalable Feature Pyramid Architecture for Object
-    Detection. (https://arxiv.org/abs/1904.07392)
+    Implementation of `NAS-FPN: Learning Scalable Feature Pyramid Architecture
+    for Object Detection <https://arxiv.org/abs/1904.07392>`_
+
+    Args:
+        in_channels (List[int]): Number of input channels per scale.
+        out_channels (int): Number of output channels (used at each scale)
+        num_outs (int): Number of output scales.
+        stack_times (int): The number of times the pyramid architecture will
+            be stacked.
+        start_level (int): Index of the start input backbone level used to
+            build the feature pyramid. Default: 0.
+        end_level (int): Index of the end input backbone level (exclusive) to
+            build the feature pyramid. Default: -1, which means the last level.
+        add_extra_convs (bool): It decides whether to add conv
+            layers on top of the original feature maps. Default to False.
+            If True, its actual mode is specified by `extra_convs_on_inputs`.
+        init_cfg (dict or list[dict], optional): Initialization config dict.
     """
 
     def __init__(self,
@@ -21,8 +38,9 @@ class NASFPN(nn.Module):
                  start_level=0,
                  end_level=-1,
                  add_extra_convs=False,
-                 norm_cfg=None):
-        super(NASFPN, self).__init__()
+                 norm_cfg=None,
+                 init_cfg=dict(type='Caffe2Xavier', layer='Conv2d')):
+        super(NASFPN, self).__init__(init_cfg)
         assert isinstance(in_channels, list)
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -31,14 +49,14 @@ class NASFPN(nn.Module):
         self.stack_times = stack_times
         self.norm_cfg = norm_cfg
 
-        if end_level == -1:
+        if end_level == -1 or end_level == self.num_ins - 1:
             self.backbone_end_level = self.num_ins
             assert num_outs >= self.num_ins - start_level
         else:
-            # if end_level < inputs, no extra level is allowed
-            self.backbone_end_level = end_level
-            assert end_level <= len(in_channels)
-            assert num_outs == end_level - start_level
+            # if end_level is not the last level, no extra level is allowed
+            self.backbone_end_level = end_level + 1
+            assert end_level < self.num_ins
+            assert num_outs == end_level - start_level + 1
         self.start_level = start_level
         self.end_level = end_level
         self.add_extra_convs = add_extra_convs
@@ -64,7 +82,7 @@ class NASFPN(nn.Module):
                 nn.Sequential(extra_conv, nn.MaxPool2d(2, 2)))
 
         # add NAS FPN connections
-        self.fpn_stages = nn.ModuleList()
+        self.fpn_stages = ModuleList()
         for _ in range(self.stack_times):
             stage = nn.ModuleDict()
             # gp(p6, p4) -> p4_1
@@ -106,12 +124,8 @@ class NASFPN(nn.Module):
                 out_norm_cfg=norm_cfg)
             self.fpn_stages.append(stage)
 
-    def init_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                caffe2_xavier_init(m)
-
     def forward(self, inputs):
+        """Forward function."""
         # build P3-P5
         feats = [
             lateral_conv(inputs[i + self.start_level])

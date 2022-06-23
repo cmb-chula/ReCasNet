@@ -1,3 +1,6 @@
+# Copyright (c) OpenMMLab. All rights reserved.
+import warnings
+
 import numpy as np
 import torch.nn as nn
 from mmcv.cnn import build_conv_layer, build_norm_layer
@@ -15,12 +18,13 @@ class RegNet(ResNet):
 
     Args:
         arch (dict): The parameter of RegNets.
+
             - w0 (int): initial width
             - wa (float): slope of width
             - wm (float): quantization parameter to quantize the width
             - depth (int): depth of the backbone
             - group_w (int): width of group
-            - bot_mul (float): bottleneck ratio, i.e. expansion of bottlneck.
+            - bot_mul (float): bottleneck ratio, i.e. expansion of bottleneck.
         strides (Sequence[int]): Strides of the first block of each stage.
         base_channels (int): Base channels after stem layer.
         in_channels (int): Number of input image channels. Default: 3.
@@ -39,6 +43,9 @@ class RegNet(ResNet):
             memory while slowing down the training speed.
         zero_init_residual (bool): whether to use zero init for last norm layer
             in resblocks to let them behave as identity.
+        pretrained (str, optional): model pretrained path. Default: None
+        init_cfg (dict or list[dict], optional): Initialization config dict.
+            Default: None
 
     Example:
         >>> from mmdet.models import RegNet
@@ -62,6 +69,8 @@ class RegNet(ResNet):
         (1, 1008, 1, 1)
     """
     arch_settings = {
+        'regnetx_400mf':
+        dict(w0=24, wa=24.48, wm=2.54, group_w=16, depth=22, bot_mul=1.0),
         'regnetx_800mf':
         dict(w0=56, wa=35.73, wm=2.28, group_w=16, depth=16, bot_mul=1.0),
         'regnetx_1.6gf':
@@ -97,8 +106,10 @@ class RegNet(ResNet):
                  stage_with_dcn=(False, False, False, False),
                  plugins=None,
                  with_cp=False,
-                 zero_init_residual=True):
-        super(ResNet, self).__init__()
+                 zero_init_residual=True,
+                 pretrained=None,
+                 init_cfg=None):
+        super(ResNet, self).__init__(init_cfg)
 
         # Generate RegNet parameters first
         if isinstance(arch, str):
@@ -153,10 +164,33 @@ class RegNet(ResNet):
         self.plugins = plugins
         self.zero_init_residual = zero_init_residual
         self.block = Bottleneck
+        expansion_bak = self.block.expansion
         self.block.expansion = 1
         self.stage_blocks = stage_blocks[:num_stages]
 
         self._make_stem_layer(in_channels, stem_channels)
+
+        block_init_cfg = None
+        assert not (init_cfg and pretrained), \
+            'init_cfg and pretrained cannot be specified at the same time'
+        if isinstance(pretrained, str):
+            warnings.warn('DeprecationWarning: pretrained is deprecated, '
+                          'please use "init_cfg" instead')
+            self.init_cfg = dict(type='Pretrained', checkpoint=pretrained)
+        elif pretrained is None:
+            if init_cfg is None:
+                self.init_cfg = [
+                    dict(type='Kaiming', layer='Conv2d'),
+                    dict(
+                        type='Constant',
+                        val=1,
+                        layer=['_BatchNorm', 'GroupNorm'])
+                ]
+                if self.zero_init_residual:
+                    block_init_cfg = dict(
+                        type='Constant', val=0, override=dict(name='norm3'))
+        else:
+            raise TypeError('pretrained must be a str or None')
 
         self.inplanes = stem_channels
         self.res_layers = []
@@ -189,7 +223,8 @@ class RegNet(ResNet):
                 plugins=stage_plugins,
                 groups=stage_groups,
                 base_width=group_width,
-                base_channels=self.stage_widths[i])
+                base_channels=self.stage_widths[i],
+                init_cfg=block_init_cfg)
             self.inplanes = self.stage_widths[i]
             layer_name = f'layer{i + 1}'
             self.add_module(layer_name, res_layer)
@@ -198,6 +233,7 @@ class RegNet(ResNet):
         self._freeze_stages()
 
         self.feat_dim = stage_widths[-1]
+        self.block.expansion = expansion_bak
 
     def _make_stem_layer(self, in_channels, base_channels):
         self.conv1 = build_conv_layer(
@@ -229,8 +265,8 @@ class RegNet(ResNet):
             divisor (int, optional): The divisor of channels. Defaults to 8.
 
         Returns:
-            list, int: return a list of widths of each stage and the number of
-                stages
+            list, int: return a list of widths of each stage and the number \
+                of stages
         """
         assert width_slope >= 0
         assert initial_width > 0
@@ -247,7 +283,7 @@ class RegNet(ResNet):
 
     @staticmethod
     def quantize_float(number, divisor):
-        """Converts a float to closest non-zero int divisible by divior.
+        """Converts a float to closest non-zero int divisible by divisor.
 
         Args:
             number (int): Original number to be quantized.
@@ -284,7 +320,7 @@ class RegNet(ResNet):
         return widths, groups
 
     def get_stages_from_blocks(self, widths):
-        """Gets widths/stage_blocks of network at each stage
+        """Gets widths/stage_blocks of network at each stage.
 
         Args:
             widths (list[int]): Width in each stage.
@@ -306,6 +342,7 @@ class RegNet(ResNet):
         return stage_widths, stage_blocks
 
     def forward(self, x):
+        """Forward function."""
         x = self.conv1(x)
         x = self.norm1(x)
         x = self.relu(x)

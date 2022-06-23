@@ -1,6 +1,7 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 import torch
+from mmcv.ops import nms_match
 
-from mmdet.ops import nms_match
 from ..builder import BBOX_SAMPLERS
 from ..transforms import bbox2roi
 from .base_sampler import BaseSampler
@@ -9,11 +10,8 @@ from .sampling_result import SamplingResult
 
 @BBOX_SAMPLERS.register_module()
 class ScoreHLRSampler(BaseSampler):
-    """Importance-based Sample Reweighting (ISR_N), negative part,
-       described in `PISA <https://arxiv.org/abs/1904.04821>`_.
-
-    References:
-        .. [1] https://arxiv.org/pdf/1604.03540.pdf
+    r"""Importance-based Sample Reweighting (ISR_N), described in `Prime Sample
+    Attention in Object Detection <https://arxiv.org/abs/1904.04821>`_.
 
     Score hierarchical local rank (HLR) differentiates with RandomSampler in
     negative part. It firstly computes Score-HLR in a two-step way,
@@ -22,7 +20,7 @@ class ScoreHLRSampler(BaseSampler):
     Args:
         num (int): Total number of sampled RoIs.
         pos_fraction (float): Fraction of positive samples.
-        context (:obj:`BaseRoIHead`): RoI head that the sampler belongs to.
+        context (:class:`BaseRoIHead`): RoI head that the sampler belongs to.
         neg_pos_ub (int): Upper bound of the ratio of num negative to num
             positive, -1 means no upper bound.
         add_gt_as_proposals (bool): Whether to add ground truth as proposals.
@@ -80,8 +78,11 @@ class ScoreHLRSampler(BaseSampler):
 
         is_tensor = isinstance(gallery, torch.Tensor)
         if not is_tensor:
-            gallery = torch.tensor(
-                gallery, dtype=torch.long, device=torch.cuda.current_device())
+            if torch.cuda.is_available():
+                device = torch.cuda.current_device()
+            else:
+                device = 'cpu'
+            gallery = torch.tensor(gallery, dtype=torch.long, device=device)
         perm = torch.randperm(gallery.numel(), device=gallery.device)[:num]
         rand_inds = gallery[perm]
         if not is_tensor:
@@ -231,7 +232,7 @@ class ScoreHLRSampler(BaseSampler):
             gt_labels (Tensor, optional): Class labels of ground truth bboxes.
 
         Returns:
-            tuple[:obj:`SamplingResult`, Tensor]: Sampling result and negetive
+            tuple[:obj:`SamplingResult`, Tensor]: Sampling result and negative
                 label weights.
         """
         bboxes = bboxes[:, :4]

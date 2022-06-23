@@ -5,7 +5,6 @@ _base_ = [
 ]
 model = dict(
     type='CascadeRCNN',
-    pretrained='torchvision://resnet50',
     backbone=dict(
         type='ResNet',
         depth=50,
@@ -14,7 +13,8 @@ model = dict(
         frozen_stages=1,
         norm_cfg=dict(type='BN', requires_grad=True),
         norm_eval=True,
-        style='pytorch'),
+        style='pytorch',
+        init_cfg=dict(type='Pretrained', checkpoint='torchvision://resnet50')),
     neck=dict(
         type='FPN',
         in_channels=[256, 512, 1024, 2048],
@@ -30,7 +30,10 @@ model = dict(
         bbox_roi_extractor=dict(
             type='SingleRoIExtractor',
             roi_layer=dict(
-                type='RoIAlign', out_size=7, sample_num=2, aligned=False)),
+                type='RoIAlign',
+                output_size=7,
+                sampling_ratio=2,
+                aligned=False)),
         bbox_head=[
             dict(
                 type='Shared2FCBBoxHead',
@@ -69,5 +72,8 @@ model = dict(
         mask_roi_extractor=dict(
             type='SingleRoIExtractor',
             roi_layer=dict(
-                type='RoIAlign', out_size=14, sample_num=2, aligned=False))))
+                type='RoIAlign',
+                output_size=14,
+                sampling_ratio=2,
+                aligned=False))))
 dist_params = dict(backend='nccl', port=29515)

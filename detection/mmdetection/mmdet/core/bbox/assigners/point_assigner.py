@@ -1,3 +1,4 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 import torch
 
 from ..builder import BBOX_ASSIGNERS
@@ -14,7 +15,6 @@ class PointAssigner(BaseAssigner):
 
     - 0: negative sample, no assigned gt
     - positive integer: positive sample, index (1-based) of assigned gt
-
     """
 
     def __init__(self, scale=4, pos_num=3):

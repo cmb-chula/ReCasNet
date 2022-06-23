@@ -1,3 +1,4 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 import os.path as osp
 import pickle
 import shutil
@@ -7,9 +8,10 @@ import time
 import mmcv
 import torch
 import torch.distributed as dist
+from mmcv.image import tensor2imgs
 from mmcv.runner import get_dist_info
 
-from mmdet.core import encode_mask_results, tensor2imgs
+from mmdet.core import encode_mask_results
 
 
 def single_gpu_test(model,
@@ -20,19 +22,23 @@ def single_gpu_test(model,
     model.eval()
     results = []
     dataset = data_loader.dataset
+    PALETTE = getattr(dataset, 'PALETTE', None)
     prog_bar = mmcv.ProgressBar(len(dataset))
-    # count = 0
     for i, data in enumerate(data_loader):
         with torch.no_grad():
             result = model(return_loss=False, rescale=True, **data)
 
+        batch_size = len(result)
         if show or out_dir:
-            img_tensor = data['img'][0]
+            if batch_size == 1 and isinstance(data['img'][0], torch.Tensor):
+                img_tensor = data['img'][0]
+            else:
+                img_tensor = data['img'][0].data[0]
             img_metas = data['img_metas'][0].data[0]
             imgs = tensor2imgs(img_tensor, **img_metas[0]['img_norm_cfg'])
             assert len(imgs) == len(img_metas)
 
-            for img, img_meta in zip(imgs, img_metas):
+            for i, (img, img_meta) in enumerate(zip(imgs, img_metas)):
                 h, w, _ = img_meta['img_shape']
                 img_show = img[:h, :w, :]
 
@@ -46,31 +52,29 @@ def single_gpu_test(model,
 
                 model.module.show_result(
                     img_show,
-                    result,
+                    result[i],
+                    bbox_color=PALETTE,
+                    text_color=PALETTE,
+                    mask_color=PALETTE,
                     show=show,
                     out_file=out_file,
                     score_thr=show_score_thr)
 
         # encode mask results
-        if isinstance(result, tuple):
-            bbox_results, mask_results = result
-            encoded_mask_results = encode_mask_results(mask_results)
-            result = bbox_results, encoded_mask_results
-        import numpy as np
-        prog_bar.update()
-        results.append(result)
+        if isinstance(result[0], tuple):
+            result = [(bbox_results, encode_mask_results(mask_results))
+                      for bbox_results, mask_results in result]
+        # This logic is only used in panoptic segmentation test.
+        elif isinstance(result[0], dict) and 'ins_results' in result[0]:
+            for j in range(len(result)):
+                bbox_results, mask_results = result[j]['ins_results']
+                result[j]['ins_results'] = (bbox_results,
+                                            encode_mask_results(mask_results))
 
-        # results.append([result, np.array(data['img_metas'][0].data[0][0]['embedding_backbone'][3].cpu().numpy(), dtype = np.float16).mean(axis = (2, 3))  ])
-        # batch_size = len(data['img_metas'][0].data)
+        results.extend(result)
 
-        # print( data['img_metas'][0].data)
-        # print( data['img_metas'][0].data[0][0]['embedding_backbone'][3].cpu().numpy().shape )
-        # print(data['img_metas'][0].data[0][0]['embedding_backbone'][3].cpu().numpy().mean(axis = (2, 3)).shape)
-        # for _ in range(batch_size):
-        #     prog_bar.update()
-        # count += 1
-        # if(count == 1000):break
-        
+        for _ in range(batch_size):
+            prog_bar.update()
     return results
 
 
@@ -104,14 +108,20 @@ def multi_gpu_test(model, data_loader, tmpdir=None, gpu_collect=False):
         with torch.no_grad():
             result = model(return_loss=False, rescale=True, **data)
             # encode mask results
-            if isinstance(result, tuple):
-                bbox_results, mask_results = result
-                encoded_mask_results = encode_mask_results(mask_results)
-                result = bbox_results, encoded_mask_results
-        results.append(result)
+            if isinstance(result[0], tuple):
+                result = [(bbox_results, encode_mask_results(mask_results))
+                          for bbox_results, mask_results in result]
+            # This logic is only used in panoptic segmentation test.
+            elif isinstance(result[0], dict) and 'ins_results' in result[0]:
+                for j in range(len(result)):
+                    bbox_results, mask_results = result[j]['ins_results']
+                    result[j]['ins_results'] = (
+                        bbox_results, encode_mask_results(mask_results))
+
+        results.extend(result)
 
         if rank == 0:
-            batch_size = len(data['img_metas'][0].data)
+            batch_size = len(result)
             for _ in range(batch_size * world_size):
                 prog_bar.update()
 
@@ -134,7 +144,8 @@ def collect_results_cpu(result_part, size, tmpdir=None):
                                 dtype=torch.uint8,
                                 device='cuda')
         if rank == 0:
-            tmpdir = tempfile.mkdtemp()
+            mmcv.mkdir_or_exist('.dist_test')
+            tmpdir = tempfile.mkdtemp(dir='.dist_test')
             tmpdir = torch.tensor(
                 bytearray(tmpdir.encode()), dtype=torch.uint8, device='cuda')
             dir_tensor[:len(tmpdir)] = tmpdir

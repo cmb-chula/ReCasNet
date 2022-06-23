@@ -1,6 +1,5 @@
 _base_ = '../cascade_rcnn/cascade_mask_rcnn_r50_fpn_1x_coco.py'
 model = dict(
-    pretrained='open-mmlab://msra/hrnetv2_w32',
     backbone=dict(
         _delete_=True,
         type='HRNet',
@@ -28,7 +27,9 @@ model = dict(
                 num_branches=4,
                 block='BASIC',
                 num_blocks=(4, 4, 4, 4),
-                num_channels=(32, 64, 128, 256)))),
+                num_channels=(32, 64, 128, 256))),
+        init_cfg=dict(
+            type='Pretrained', checkpoint='open-mmlab://msra/hrnetv2_w32')),
     neck=dict(
         _delete_=True,
         type='HRFPN',
@@ -36,4 +37,4 @@ model = dict(
         out_channels=256))
 # learning policy
 lr_config = dict(step=[16, 19])
-total_epochs = 20
+runner = dict(type='EpochBasedRunner', max_epochs=20)

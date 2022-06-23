@@ -5,7 +5,6 @@ _base_ = [
 
 model = dict(
     type='NASFCOS',
-    pretrained='open-mmlab://resnet50_caffe_bgr',
     backbone=dict(
         type='ResNet',
         depth=50,
@@ -13,7 +12,10 @@ model = dict(
         out_indices=(0, 1, 2, 3),
         frozen_stages=1,
         norm_cfg=dict(type='BN', requires_grad=False, eps=0),
-        style='caffe'),
+        style='caffe',
+        init_cfg=dict(
+            type='Pretrained',
+            checkpoint='open-mmlab://detectron2/resnet50_caffe')),
     neck=dict(
         type='NASFCOS_FPN',
         in_channels=[256, 512, 1024, 2048],
@@ -22,7 +24,7 @@ model = dict(
         add_extra_convs=True,
         num_outs=5,
         norm_cfg=dict(type='BN'),
-        conv_cfg=dict(type='DCNv2', deformable_groups=2)),
+        conv_cfg=dict(type='DCNv2', deform_groups=2)),
     bbox_head=dict(
         type='NASFCOSHead',
         num_classes=80,
@@ -38,24 +40,23 @@ model = dict(
             loss_weight=1.0),
         loss_bbox=dict(type='IoULoss', loss_weight=1.0),
         loss_centerness=dict(
-            type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0)))
-
-train_cfg = dict(
-    assigner=dict(
-        type='MaxIoUAssigner',
-        pos_iou_thr=0.5,
-        neg_iou_thr=0.4,
-        min_pos_iou=0,
-        ignore_iof_thr=-1),
-    allowed_border=-1,
-    pos_weight=-1,
-    debug=False)
-test_cfg = dict(
-    nms_pre=1000,
-    min_bbox_size=0,
-    score_thr=0.05,
-    nms=dict(type='nms', iou_thr=0.6),
-    max_per_img=100)
+            type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0)),
+    train_cfg=dict(
+        assigner=dict(
+            type='MaxIoUAssigner',
+            pos_iou_thr=0.5,
+            neg_iou_thr=0.4,
+            min_pos_iou=0,
+            ignore_iof_thr=-1),
+        allowed_border=-1,
+        pos_weight=-1,
+        debug=False),
+    test_cfg=dict(
+        nms_pre=1000,
+        min_bbox_size=0,
+        score_thr=0.05,
+        nms=dict(type='nms', iou_threshold=0.6),
+        max_per_img=100))
 
 img_norm_cfg = dict(
     mean=[103.530, 116.280, 123.675], std=[1.0, 1.0, 1.0], to_rgb=False)

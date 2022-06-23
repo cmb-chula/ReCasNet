@@ -1,17 +1,35 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 import torch.nn as nn
 import torch.nn.functional as F
 from mmcv.cnn import ConvModule, caffe2_xavier_init
+from mmcv.ops.merge_cells import ConcatCell
+from mmcv.runner import BaseModule
 
-from mmdet.ops.merge_cells import ConcatCell
 from ..builder import NECKS
 
 
 @NECKS.register_module()
-class NASFCOS_FPN(nn.Module):
-    """FPN structure in NASFPN
+class NASFCOS_FPN(BaseModule):
+    """FPN structure in NASFPN.
 
-    NAS-FCOS: Fast Neural Architecture Search for Object Detection
-    <https://arxiv.org/abs/1906.04423>
+    Implementation of paper `NAS-FCOS: Fast Neural Architecture Search for
+    Object Detection <https://arxiv.org/abs/1906.04423>`_
+
+    Args:
+        in_channels (List[int]): Number of input channels per scale.
+        out_channels (int): Number of output channels (used at each scale)
+        num_outs (int): Number of output scales.
+        start_level (int): Index of the start input backbone level used to
+            build the feature pyramid. Default: 0.
+        end_level (int): Index of the end input backbone level (exclusive) to
+            build the feature pyramid. Default: -1, which means the last level.
+        add_extra_convs (bool): It decides whether to add conv
+            layers on top of the original feature maps. Default to False.
+            If True, its actual mode is specified by `extra_convs_on_inputs`.
+        conv_cfg (dict): dictionary to construct and config conv layer.
+        norm_cfg (dict): dictionary to construct and config norm layer.
+        init_cfg (dict or list[dict], optional): Initialization config dict.
+            Default: None
     """
 
     def __init__(self,
@@ -22,8 +40,11 @@ class NASFCOS_FPN(nn.Module):
                  end_level=-1,
                  add_extra_convs=False,
                  conv_cfg=None,
-                 norm_cfg=None):
-        super(NASFCOS_FPN, self).__init__()
+                 norm_cfg=None,
+                 init_cfg=None):
+        assert init_cfg is None, 'To prevent abnormal initialization ' \
+                                 'behavior, init_cfg is not allowed to be set'
+        super(NASFCOS_FPN, self).__init__(init_cfg)
         assert isinstance(in_channels, list)
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -32,13 +53,14 @@ class NASFCOS_FPN(nn.Module):
         self.norm_cfg = norm_cfg
         self.conv_cfg = conv_cfg
 
-        if end_level == -1:
+        if end_level == -1 or end_level == self.num_ins - 1:
             self.backbone_end_level = self.num_ins
             assert num_outs >= self.num_ins - start_level
         else:
-            self.backbone_end_level = end_level
-            assert end_level <= len(in_channels)
-            assert num_outs == end_level - start_level
+            # if end_level is not the last level, no extra level is allowed
+            self.backbone_end_level = end_level + 1
+            assert end_level < self.num_ins
+            assert num_outs == end_level - start_level + 1
         self.start_level = start_level
         self.end_level = end_level
         self.add_extra_convs = add_extra_convs
@@ -99,6 +121,7 @@ class NASFCOS_FPN(nn.Module):
                     order=('act', 'norm', 'conv')))
 
     def forward(self, inputs):
+        """Forward function."""
         feats = [
             adapt_conv(inputs[i + self.start_level])
             for i, adapt_conv in enumerate(self.adapt_convs)
@@ -132,6 +155,8 @@ class NASFCOS_FPN(nn.Module):
         return tuple(ret)
 
     def init_weights(self):
+        """Initialize the weights of module."""
+        super(NASFCOS_FPN, self).init_weights()
         for module in self.fpn.values():
             if hasattr(module, 'conv_out'):
                 caffe2_xavier_init(module.out_conv.conv)

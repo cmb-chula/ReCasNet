@@ -1,14 +1,35 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 import numpy as np
 
 from ..builder import PIPELINES
 
 
 @PIPELINES.register_module()
-class InstaBoost(object):
-    """
-    Data augmentation method in paper "InstaBoost: Boosting Instance
-    Segmentation Via Probability Map Guided Copy-Pasting"
-    Implementation details can refer to https://github.com/GothicAi/Instaboost.
+class InstaBoost:
+    r"""Data augmentation method in `InstaBoost: Boosting Instance
+    Segmentation Via Probability Map Guided Copy-Pasting
+    <https://arxiv.org/abs/1908.07801>`_.
+
+    Refer to https://github.com/GothicAi/Instaboost for implementation details.
+
+    Args:
+        action_candidate (tuple): Action candidates. "normal", "horizontal", \
+            "vertical", "skip" are supported. Default: ('normal', \
+            'horizontal', 'skip').
+        action_prob (tuple): Corresponding action probabilities. Should be \
+            the same length as action_candidate. Default: (1, 0, 0).
+        scale (tuple): (min scale, max scale). Default: (0.8, 1.2).
+        dx (int): The maximum x-axis shift will be (instance width) / dx.
+            Default 15.
+        dy (int): The maximum y-axis shift will be (instance height) / dy.
+            Default 15.
+        theta (tuple): (min rotation degree, max rotation degree). \
+            Default: (-1, 1).
+        color_prob (float): Probability of images for color augmentation.
+            Default 0.5.
+        heatmap_flag (bool): Whether to use heatmap guided. Default False.
+        aug_ratio (float): Probability of applying this transformation. \
+            Default 0.5.
     """
 
     def __init__(self,
@@ -77,7 +98,7 @@ class InstaBoost(object):
 
     def __call__(self, results):
         img = results['img']
-        orig_type = img.dtype
+        ori_type = img.dtype
         anns = self._load_anns(results)
         if np.random.choice([0, 1], p=[1 - self.aug_ratio, self.aug_ratio]):
             try:
@@ -88,7 +109,7 @@ class InstaBoost(object):
             anns, img = instaboost.get_new_data(
                 anns, img.astype(np.uint8), self.cfg, background=None)
 
-        results = self._parse_anns(results, anns, img.astype(orig_type))
+        results = self._parse_anns(results, anns, img.astype(ori_type))
         return results
 
     def __repr__(self):

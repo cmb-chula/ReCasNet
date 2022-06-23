@@ -1,9 +1,11 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 from ..builder import DETECTORS
 from .two_stage import TwoStageDetector
 
 
 @DETECTORS.register_module()
 class FastRCNN(TwoStageDetector):
+    """Implementation of `Fast R-CNN <https://arxiv.org/abs/1504.08083>`_"""
 
     def __init__(self,
                  backbone,
@@ -11,14 +13,16 @@ class FastRCNN(TwoStageDetector):
                  train_cfg,
                  test_cfg,
                  neck=None,
-                 pretrained=None):
+                 pretrained=None,
+                 init_cfg=None):
         super(FastRCNN, self).__init__(
             backbone=backbone,
             neck=neck,
             roi_head=roi_head,
             train_cfg=train_cfg,
             test_cfg=test_cfg,
-            pretrained=pretrained)
+            pretrained=pretrained,
+            init_cfg=init_cfg)
 
     def forward_test(self, imgs, img_metas, proposals, **kwargs):
         """
@@ -42,9 +46,6 @@ class FastRCNN(TwoStageDetector):
         if num_augs != len(img_metas):
             raise ValueError(f'num of augmentations ({len(imgs)}) '
                              f'!= num of image meta ({len(img_metas)})')
-        # TODO: remove the restriction of samples_per_gpu == 1 when prepared
-        samples_per_gpu = imgs[0].size(0)
-        assert samples_per_gpu == 1
 
         if num_augs == 1:
             return self.simple_test(imgs[0], img_metas[0], proposals[0],

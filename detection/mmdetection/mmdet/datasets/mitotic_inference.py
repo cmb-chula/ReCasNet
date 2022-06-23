@@ -1,6 +1,6 @@
 from mmdet.core import eval_map, eval_recalls
 from .builder import DATASETS
-from .xml_style import XMLDataset
+from .xml_style_legacy import XMLLegacyDataset
 
 import os.path as osp
 import xml.etree.ElementTree as ET
@@ -11,7 +11,7 @@ from PIL import Image
 
 
 @DATASETS.register_module()
-class MitoticInferenceDataset(XMLDataset):
+class MitoticInferenceDataset(XMLLegacyDataset):
 
     CLASSES = ['mitotic']
 

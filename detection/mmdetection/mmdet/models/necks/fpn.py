@@ -1,22 +1,22 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 import torch.nn as nn
 import torch.nn.functional as F
-from mmcv.cnn import ConvModule, xavier_init
+from mmcv.cnn import ConvModule
+from mmcv.runner import BaseModule, auto_fp16
 
-from mmdet.core import auto_fp16
 from ..builder import NECKS
 
 
 @NECKS.register_module()
-class FPN(nn.Module):
-    """
-    Feature Pyramid Network.
+class FPN(BaseModule):
+    r"""Feature Pyramid Network.
 
-    This is an implementation of - Feature Pyramid Networks for Object
-    Detection (https://arxiv.org/abs/1612.03144)
+    This is an implementation of paper `Feature Pyramid Networks for Object
+    Detection <https://arxiv.org/abs/1612.03144>`_.
 
     Args:
-        in_channels (List[int]): Number of input channels per scale.
-        out_channels (int): Number of output channels (used at each scale)
+        in_channels (list[int]): Number of input channels per scale.
+        out_channels (int): Number of output channels (used at each scale).
         num_outs (int): Number of output scales.
         start_level (int): Index of the start input backbone level used to
             build the feature pyramid. Default: 0.
@@ -24,27 +24,24 @@ class FPN(nn.Module):
             build the feature pyramid. Default: -1, which means the last level.
         add_extra_convs (bool | str): If bool, it decides whether to add conv
             layers on top of the original feature maps. Default to False.
-            If True, its actual mode is specified by `extra_convs_on_inputs`.
+            If True, it is equivalent to `add_extra_convs='on_input'`.
             If str, it specifies the source feature map of the extra convs.
             Only the following options are allowed
 
             - 'on_input': Last feat map of neck inputs (i.e. backbone feature).
-            - 'on_lateral':  Last feature map after lateral convs.
+            - 'on_lateral': Last feature map after lateral convs.
             - 'on_output': The last output feature map after fpn convs.
-        extra_convs_on_inputs (bool, deprecated): Whether to apply extra convs
-            on the original feature from the backbone. If True,
-            it is equivalent to `add_extra_convs='on_input'`. If False, it is
-            equivalent to set `add_extra_convs='on_output'`. Default to True.
         relu_before_extra_convs (bool): Whether to apply relu before the extra
             conv. Default: False.
         no_norm_on_lateral (bool): Whether to apply norm on lateral.
             Default: False.
         conv_cfg (dict): Config dict for convolution layer. Default: None.
         norm_cfg (dict): Config dict for normalization layer. Default: None.
-        act_cfg (str): Config dict for activation layer in ConvModule.
+        act_cfg (dict): Config dict for activation layer in ConvModule.
             Default: None.
         upsample_cfg (dict): Config dict for interpolate layer.
-            Default: `dict(mode='nearest')`
+            Default: dict(mode='nearest').
+        init_cfg (dict or list[dict], optional): Initialization config dict.
 
     Example:
         >>> import torch
@@ -69,14 +66,15 @@ class FPN(nn.Module):
                  start_level=0,
                  end_level=-1,
                  add_extra_convs=False,
-                 extra_convs_on_inputs=True,
                  relu_before_extra_convs=False,
                  no_norm_on_lateral=False,
                  conv_cfg=None,
                  norm_cfg=None,
                  act_cfg=None,
-                 upsample_cfg=dict(mode='nearest')):
-        super(FPN, self).__init__()
+                 upsample_cfg=dict(mode='nearest'),
+                 init_cfg=dict(
+                     type='Xavier', layer='Conv2d', distribution='uniform')):
+        super(FPN, self).__init__(init_cfg)
         assert isinstance(in_channels, list)
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -87,14 +85,14 @@ class FPN(nn.Module):
         self.fp16_enabled = False
         self.upsample_cfg = upsample_cfg.copy()
 
-        if end_level == -1:
+        if end_level == -1 or end_level == self.num_ins - 1:
             self.backbone_end_level = self.num_ins
             assert num_outs >= self.num_ins - start_level
         else:
-            # if end_level < inputs, no extra level is allowed
-            self.backbone_end_level = end_level
-            assert end_level <= len(in_channels)
-            assert num_outs == end_level - start_level
+            # if end_level is not the last level, no extra level is allowed
+            self.backbone_end_level = end_level + 1
+            assert end_level < self.num_ins
+            assert num_outs == end_level - start_level + 1
         self.start_level = start_level
         self.end_level = end_level
         self.add_extra_convs = add_extra_convs
@@ -103,12 +101,7 @@ class FPN(nn.Module):
             # Extra_convs_source choices: 'on_input', 'on_lateral', 'on_output'
             assert add_extra_convs in ('on_input', 'on_lateral', 'on_output')
         elif add_extra_convs:  # True
-            if extra_convs_on_inputs:
-                # For compatibility with previous release
-                # TODO: deprecate `extra_convs_on_inputs`
-                self.add_extra_convs = 'on_input'
-            else:
-                self.add_extra_convs = 'on_output'
+            self.add_extra_convs = 'on_input'
 
         self.lateral_convs = nn.ModuleList()
         self.fpn_convs = nn.ModuleList()
@@ -134,7 +127,7 @@ class FPN(nn.Module):
 
             self.lateral_convs.append(l_conv)
             self.fpn_convs.append(fpn_conv)
-        
+
         # add extra conv layers (e.g., RetinaNet)
         extra_levels = num_outs - self.backbone_end_level + self.start_level
         if self.add_extra_convs and extra_levels >= 1:
@@ -143,7 +136,6 @@ class FPN(nn.Module):
                     in_channels = self.in_channels[self.backbone_end_level - 1]
                 else:
                     in_channels = out_channels
-                # print("-->", in_channels)
                 extra_fpn_conv = ConvModule(
                     in_channels,
                     out_channels,
@@ -155,23 +147,17 @@ class FPN(nn.Module):
                     act_cfg=act_cfg,
                     inplace=False)
                 self.fpn_convs.append(extra_fpn_conv)
-    # default init_weights for conv(msra) and norm in ConvModule
-    def init_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                xavier_init(m, distribution='uniform')
 
     @auto_fp16()
     def forward(self, inputs):
+        """Forward function."""
         assert len(inputs) == len(self.in_channels)
-        # print(inputs[0].shape)
+
         # build laterals
-        laterals = []
-        for i, lateral_conv in enumerate(self.lateral_convs):
-            # print(lateral_conv, inputs[i + self.start_level].shape)
-            # print("pass")
-            laterals.append(lateral_conv(inputs[i + self.start_level]))            
-        # print("--->", inputs[0].shape)
+        laterals = [
+            lateral_conv(inputs[i + self.start_level])
+            for i, lateral_conv in enumerate(self.lateral_convs)
+        ]
 
         # build top-down path
         used_backbone_levels = len(laterals)
@@ -179,11 +165,12 @@ class FPN(nn.Module):
             # In some cases, fixing `scale factor` (e.g. 2) is preferred, but
             #  it cannot co-exist with `size` in `F.interpolate`.
             if 'scale_factor' in self.upsample_cfg:
-                laterals[i - 1] += F.interpolate(laterals[i],
-                                                 **self.upsample_cfg)
+                # fix runtime error of "+=" inplace operation in PyTorch 1.10
+                laterals[i - 1] = laterals[i - 1] + F.interpolate(
+                    laterals[i], **self.upsample_cfg)
             else:
                 prev_shape = laterals[i - 1].shape[2:]
-                laterals[i - 1] += F.interpolate(
+                laterals[i - 1] = laterals[i - 1] + F.interpolate(
                     laterals[i], size=prev_shape, **self.upsample_cfg)
 
         # build outputs

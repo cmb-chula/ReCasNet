@@ -15,10 +15,10 @@ train_pipeline = [
     dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels']),
 ]
 val_pipeline = [
-    dict(type='LoadMitoticSlide', to_float32=True),
+    dict(type='LoadMitoticSlide'),
     dict(
         type='MultiScaleFlipAug',
-        img_scale= (512, 512),
+        img_scale=(512, 512),
         flip=False,
         transforms=[
             dict(type='Resize', keep_ratio=True),
@@ -31,10 +31,10 @@ val_pipeline = [
 ]
 
 test_pipeline = [
-    dict(type='LoadMitoticSlide', to_float32=True),
+    dict(type='LoadMitoticSlide'),
     dict(
         type='MultiScaleFlipAug',
-        img_scale= (512, 512),
+        img_scale=(512, 512),
         flip=False,
         transforms=[
             dict(type='Resize', keep_ratio=True),
@@ -45,6 +45,7 @@ test_pipeline = [
             dict(type='Collect', keys=['img']),
         ])
 ]
+
 
 data = dict(
     samples_per_gpu=4,
@@ -66,7 +67,9 @@ data = dict(
         pipeline=val_pipeline),
     test=dict(
         type='MitoticInferenceDataset',
-        ann_file=data_root + 'refocus.txt',
+        ann_file=data_root + 'refocus.txt', #inference_train, test_tiling
+        # ann_file=data_root + 'inference_train.txt', #inference_train, test_tiling
+
         img_prefix=data_root,
         pipeline=test_pipeline))
 

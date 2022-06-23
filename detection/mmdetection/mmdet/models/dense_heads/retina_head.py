@@ -1,5 +1,6 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 import torch.nn as nn
-from mmcv.cnn import ConvModule, bias_init_with_prob, normal_init
+from mmcv.cnn import ConvModule
 
 from ..builder import HEADS
 from .anchor_head import AnchorHead
@@ -7,8 +8,8 @@ from .anchor_head import AnchorHead
 
 @HEADS.register_module()
 class RetinaHead(AnchorHead):
-    """An anchor-based head used in
-    `RetinaNet <https://arxiv.org/pdf/1708.02002.pdf>`_.
+    r"""An anchor-based head used in `RetinaNet
+    <https://arxiv.org/pdf/1708.02002.pdf>`_.
 
     The head contains two subnetworks. The first classifies anchor boxes and
     the second regresses deltas for the anchors.
@@ -37,6 +38,15 @@ class RetinaHead(AnchorHead):
                      scales_per_octave=3,
                      ratios=[0.5, 1.0, 2.0],
                      strides=[8, 16, 32, 64, 128]),
+                 init_cfg=dict(
+                     type='Normal',
+                     layer='Conv2d',
+                     std=0.01,
+                     override=dict(
+                         type='Normal',
+                         name='retina_cls',
+                         std=0.01,
+                         bias_prob=0.01)),
                  **kwargs):
         self.stacked_convs = stacked_convs
         self.conv_cfg = conv_cfg
@@ -45,9 +55,11 @@ class RetinaHead(AnchorHead):
             num_classes,
             in_channels,
             anchor_generator=anchor_generator,
+            init_cfg=init_cfg,
             **kwargs)
 
     def _init_layers(self):
+        """Initialize layers of the head."""
         self.relu = nn.ReLU(inplace=True)
         self.cls_convs = nn.ModuleList()
         self.reg_convs = nn.ModuleList()
@@ -73,22 +85,25 @@ class RetinaHead(AnchorHead):
                     norm_cfg=self.norm_cfg))
         self.retina_cls = nn.Conv2d(
             self.feat_channels,
-            self.num_anchors * self.cls_out_channels,
+            self.num_base_priors * self.cls_out_channels,
             3,
             padding=1)
         self.retina_reg = nn.Conv2d(
-            self.feat_channels, self.num_anchors * 4, 3, padding=1)
-
-    def init_weights(self):
-        for m in self.cls_convs:
-            normal_init(m.conv, std=0.01)
-        for m in self.reg_convs:
-            normal_init(m.conv, std=0.01)
-        bias_cls = bias_init_with_prob(0.01)
-        normal_init(self.retina_cls, std=0.01, bias=bias_cls)
-        normal_init(self.retina_reg, std=0.01)
+            self.feat_channels, self.num_base_priors * 4, 3, padding=1)
 
     def forward_single(self, x):
+        """Forward feature of a single scale level.
+
+        Args:
+            x (Tensor): Features of a single scale level.
+
+        Returns:
+            tuple:
+                cls_score (Tensor): Cls scores for a single scale level
+                    the channels number is num_anchors * num_classes.
+                bbox_pred (Tensor): Box energies / deltas for a single scale
+                    level, the channels number is num_anchors * 4.
+        """
         cls_feat = x
         reg_feat = x
         for cls_conv in self.cls_convs:

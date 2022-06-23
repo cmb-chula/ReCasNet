@@ -1,16 +1,18 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 import torch.nn as nn
 from mmcv.cnn import ConvModule, build_upsample_layer, xavier_init
+from mmcv.ops.carafe import CARAFEPack
+from mmcv.runner import BaseModule, ModuleList
 
-from mmdet.ops.carafe import CARAFEPack
 from ..builder import NECKS
 
 
 @NECKS.register_module()
-class FPN_CARAFE(nn.Module):
-    """FPN_CARAFE is a more flexible implementation of FPN.
-    It allows more choice for upsample methods during the top-down pathway.
+class FPN_CARAFE(BaseModule):
+    """FPN_CARAFE is a more flexible implementation of FPN. It allows more
+    choice for upsample methods during the top-down pathway.
 
-    It can reproduce the preformance of ICCV 2019 paper
+    It can reproduce the performance of ICCV 2019 paper
     CARAFE: Content-Aware ReAssembly of FEatures
     Please refer to https://arxiv.org/abs/1905.02188 for more details.
 
@@ -28,6 +30,8 @@ class FPN_CARAFE(nn.Module):
         order (dict): Order of components in ConvModule.
         upsample (str): Type of upsample layer.
         upsample_cfg (dict): Dictionary to construct and config upsample layer.
+        init_cfg (dict or list[dict], optional): Initialization config dict.
+            Default: None
     """
 
     def __init__(self,
@@ -44,8 +48,11 @@ class FPN_CARAFE(nn.Module):
                      up_kernel=5,
                      up_group=1,
                      encoder_kernel=3,
-                     encoder_dilation=1)):
-        super(FPN_CARAFE, self).__init__()
+                     encoder_dilation=1),
+                 init_cfg=None):
+        assert init_cfg is None, 'To prevent abnormal initialization ' \
+                                 'behavior, init_cfg is not allowed to be set'
+        super(FPN_CARAFE, self).__init__(init_cfg)
         assert isinstance(in_channels, list)
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -70,20 +77,20 @@ class FPN_CARAFE(nn.Module):
                 'upsample_kernel') and self.upsample_cfg.upsample_kernel > 0
             self.upsample_kernel = self.upsample_cfg.pop('upsample_kernel')
 
-        if end_level == -1:
+        if end_level == -1 or end_level == self.num_ins - 1:
             self.backbone_end_level = self.num_ins
             assert num_outs >= self.num_ins - start_level
         else:
-            # if end_level < inputs, no extra level is allowed
-            self.backbone_end_level = end_level
-            assert end_level <= len(in_channels)
-            assert num_outs == end_level - start_level
+            # if end_level is not the last level, no extra level is allowed
+            self.backbone_end_level = end_level + 1
+            assert end_level < self.num_ins
+            assert num_outs == end_level - start_level + 1
         self.start_level = start_level
         self.end_level = end_level
 
-        self.lateral_convs = nn.ModuleList()
-        self.fpn_convs = nn.ModuleList()
-        self.upsample_modules = nn.ModuleList()
+        self.lateral_convs = ModuleList()
+        self.fpn_convs = ModuleList()
+        self.upsample_modules = ModuleList()
 
         for i in range(self.start_level, self.backbone_end_level):
             l_conv = ConvModule(
@@ -200,6 +207,8 @@ class FPN_CARAFE(nn.Module):
 
     # default init_weights for conv(msra) and norm in ConvModule
     def init_weights(self):
+        """Initialize the weights of module."""
+        super(FPN_CARAFE, self).init_weights()
         for m in self.modules():
             if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d)):
                 xavier_init(m, distribution='uniform')
@@ -208,8 +217,19 @@ class FPN_CARAFE(nn.Module):
                 m.init_weights()
 
     def slice_as(self, src, dst):
-        # slice src as dst
-        # src should have the same or larger size than dst
+        """Slice ``src`` as ``dst``
+
+        Note:
+            ``src`` should have the same or larger size than ``dst``.
+
+        Args:
+            src (torch.Tensor): Tensors to be sliced.
+            dst (torch.Tensor): ``src`` will be sliced to have the same
+                size as ``dst``.
+
+        Returns:
+            torch.Tensor: Sliced tensor.
+        """
         assert (src.size(2) >= dst.size(2)) and (src.size(3) >= dst.size(3))
         if src.size(2) == dst.size(2) and src.size(3) == dst.size(3):
             return src
@@ -217,6 +237,7 @@ class FPN_CARAFE(nn.Module):
             return src[:, :, :dst.size(2), :dst.size(3)]
 
     def tensor_add(self, a, b):
+        """Add tensors ``a`` and ``b`` that might have different sizes."""
         if a.size() == b.size():
             c = a + b
         else:
@@ -224,6 +245,7 @@ class FPN_CARAFE(nn.Module):
         return c
 
     def forward(self, inputs):
+        """Forward function."""
         assert len(inputs) == len(self.in_channels)
 
         # build laterals

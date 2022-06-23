@@ -1,6 +1,8 @@
-from mmdet.core import force_fp32
+# Copyright (c) OpenMMLab. All rights reserved.
+from mmcv.cnn.bricks import build_plugin_layer
+from mmcv.runner import force_fp32
+
 from mmdet.models.builder import ROI_EXTRACTORS
-from mmdet.ops.plugin import build_plugin_layer
 from .base_roi_extractor import BaseRoIExtractor
 
 
@@ -14,8 +16,8 @@ class GenericRoIExtractor(BaseRoIExtractor):
     Args:
         aggregation (str): The method to aggregate multiple feature maps.
             Options are 'sum', 'concat'. Default: 'sum'.
-        pre_cfg (dict|None): Specify pre-processing modules. Default: None.
-        post_cfg (dict|None): Specify post-processing modules. Default: None.
+        pre_cfg (dict | None): Specify pre-processing modules. Default: None.
+        post_cfg (dict | None): Specify post-processing modules. Default: None.
         kwargs (keyword arguments): Arguments that are the same
             as :class:`BaseRoIExtractor`.
     """
@@ -40,10 +42,11 @@ class GenericRoIExtractor(BaseRoIExtractor):
 
     @force_fp32(apply_to=('feats', ), out_fp16=True)
     def forward(self, feats, rois, roi_scale_factor=None):
+        """Forward function."""
         if len(feats) == 1:
             return self.roi_layers[0](feats[0], rois)
 
-        out_size = self.roi_layers[0].out_size
+        out_size = self.roi_layers[0].output_size
         num_levels = len(feats)
         roi_feats = feats[0].new_zeros(
             rois.size(0), self.out_channels, *out_size)

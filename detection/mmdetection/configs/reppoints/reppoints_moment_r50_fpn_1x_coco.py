@@ -4,7 +4,6 @@ _base_ = [
 ]
 model = dict(
     type='RepPointsDetector',
-    pretrained='torchvision://resnet50',
     backbone=dict(
         type='ResNet',
         depth=50,
@@ -13,7 +12,8 @@ model = dict(
         frozen_stages=1,
         norm_cfg=dict(type='BN', requires_grad=True),
         norm_eval=True,
-        style='pytorch'),
+        style='pytorch',
+        init_cfg=dict(type='Pretrained', checkpoint='torchvision://resnet50')),
     neck=dict(
         type='FPN',
         in_channels=[256, 512, 1024, 2048],
@@ -40,28 +40,28 @@ model = dict(
             loss_weight=1.0),
         loss_bbox_init=dict(type='SmoothL1Loss', beta=0.11, loss_weight=0.5),
         loss_bbox_refine=dict(type='SmoothL1Loss', beta=0.11, loss_weight=1.0),
-        transform_method='moment'))
-# training and testing settings
-train_cfg = dict(
-    init=dict(
-        assigner=dict(type='PointAssigner', scale=4, pos_num=1),
-        allowed_border=-1,
-        pos_weight=-1,
-        debug=False),
-    refine=dict(
-        assigner=dict(
-            type='MaxIoUAssigner',
-            pos_iou_thr=0.5,
-            neg_iou_thr=0.4,
-            min_pos_iou=0,
-            ignore_iof_thr=-1),
-        allowed_border=-1,
-        pos_weight=-1,
-        debug=False))
-test_cfg = dict(
-    nms_pre=1000,
-    min_bbox_size=0,
-    score_thr=0.05,
-    nms=dict(type='nms', iou_thr=0.5),
-    max_per_img=100)
+        transform_method='moment'),
+    # training and testing settings
+    train_cfg=dict(
+        init=dict(
+            assigner=dict(type='PointAssigner', scale=4, pos_num=1),
+            allowed_border=-1,
+            pos_weight=-1,
+            debug=False),
+        refine=dict(
+            assigner=dict(
+                type='MaxIoUAssigner',
+                pos_iou_thr=0.5,
+                neg_iou_thr=0.4,
+                min_pos_iou=0,
+                ignore_iof_thr=-1),
+            allowed_border=-1,
+            pos_weight=-1,
+            debug=False)),
+    test_cfg=dict(
+        nms_pre=1000,
+        min_bbox_size=0,
+        score_thr=0.05,
+        nms=dict(type='nms', iou_threshold=0.5),
+        max_per_img=100))
 optimizer = dict(lr=0.01)

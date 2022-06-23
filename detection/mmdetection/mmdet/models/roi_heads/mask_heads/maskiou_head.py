@@ -1,16 +1,16 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 import numpy as np
 import torch
 import torch.nn as nn
-from mmcv.cnn import kaiming_init, normal_init
+from mmcv.cnn import Conv2d, Linear, MaxPool2d
+from mmcv.runner import BaseModule, force_fp32
 from torch.nn.modules.utils import _pair
 
-from mmdet.core import force_fp32
 from mmdet.models.builder import HEADS, build_loss
-from mmdet.ops import Conv2d, Linear, MaxPool2d
 
 
 @HEADS.register_module()
-class MaskIoUHead(nn.Module):
+class MaskIoUHead(BaseModule):
     """Mask IoU Head.
 
     This head predicts the IoU of predicted masks and corresponding gt masks.
@@ -24,8 +24,16 @@ class MaskIoUHead(nn.Module):
                  conv_out_channels=256,
                  fc_out_channels=1024,
                  num_classes=80,
-                 loss_iou=dict(type='MSELoss', loss_weight=0.5)):
-        super(MaskIoUHead, self).__init__()
+                 loss_iou=dict(type='MSELoss', loss_weight=0.5),
+                 init_cfg=[
+                     dict(type='Kaiming', override=dict(name='convs')),
+                     dict(type='Caffe2Xavier', override=dict(name='fcs')),
+                     dict(
+                         type='Normal',
+                         std=0.01,
+                         override=dict(name='fc_mask_iou'))
+                 ]):
+        super(MaskIoUHead, self).__init__(init_cfg)
         self.in_channels = in_channels
         self.conv_out_channels = conv_out_channels
         self.fc_out_channels = fc_out_channels
@@ -61,18 +69,6 @@ class MaskIoUHead(nn.Module):
         self.relu = nn.ReLU()
         self.max_pool = MaxPool2d(2, 2)
         self.loss_iou = build_loss(loss_iou)
-
-    def init_weights(self):
-        for conv in self.convs:
-            kaiming_init(conv)
-        for fc in self.fcs:
-            kaiming_init(
-                fc,
-                a=1,
-                mode='fan_in',
-                nonlinearity='leaky_relu',
-                distribution='uniform')
-        normal_init(self.fc_mask_iou, std=0.01)
 
     def forward(self, mask_feat, mask_pred):
         mask_pred = mask_pred.sigmoid()
@@ -150,7 +146,7 @@ class MaskIoUHead(nn.Module):
 
     def _get_area_ratio(self, pos_proposals, pos_assigned_gt_inds, gt_masks):
         """Compute area ratio of the gt mask inside the proposal and the gt
-        mask of the corresponding instance"""
+        mask of the corresponding instance."""
         num_pos = pos_proposals.size(0)
         if num_pos > 0:
             area_ratios = []

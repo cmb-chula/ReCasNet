@@ -1,31 +1,28 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 import numpy as np
 import torch
 import torch.nn as nn
-from mmcv.cnn import ConvModule, bias_init_with_prob, normal_init
+from mmcv.cnn import ConvModule
+from mmcv.ops import DeformConv2d
 
-from mmdet.core import (PointGenerator, build_assigner, build_sampler,
-                        images_to_levels, multi_apply, multiclass_nms, unmap)
-from mmdet.ops import DeformConv
+from mmdet.core import (build_assigner, build_sampler, images_to_levels,
+                        multi_apply, unmap)
+from mmdet.core.anchor.point_generator import MlvlPointGenerator
+from mmdet.core.utils import filter_scores_and_topk
 from ..builder import HEADS, build_loss
-from .base_dense_head import BaseDenseHead
+from .anchor_free_head import AnchorFreeHead
 
 
 @HEADS.register_module()
-class RepPointsHead(BaseDenseHead):
+class RepPointsHead(AnchorFreeHead):
     """RepPoint head.
 
     Args:
-        in_channels (int): Number of channels in the input feature map.
-        feat_channels (int): Number of channels of the feature map.
         point_feat_channels (int): Number of channels of points features.
-        stacked_convs (int): How many conv layers are used.
         gradient_mul (float): The multiplier to gradients from
             points refinement and recognition.
         point_strides (Iterable): points strides.
         point_base_scale (int): bbox scale for assigning labels.
-        background_label (int | None): Label ID of background, set as 0 for
-            RPN and num_classes for other heads. It will automatically set as
-            num_classes if None is given.
         loss_cls (dict): Config of classification loss.
         loss_bbox_init (dict): Config of initial points loss.
         loss_bbox_refine (dict): Config of points loss in refinement.
@@ -33,21 +30,17 @@ class RepPointsHead(BaseDenseHead):
         reppoints is represented as grid points on the bounding box.
         center_init (bool): Whether to use center point assignment.
         transform_method (str): The methods to transform RepPoints to bbox.
+        init_cfg (dict or list[dict], optional): Initialization config dict.
     """  # noqa: W605
 
     def __init__(self,
                  num_classes,
                  in_channels,
-                 feat_channels=256,
                  point_feat_channels=256,
-                 stacked_convs=3,
                  num_points=9,
                  gradient_mul=0.1,
                  point_strides=[8, 16, 32, 64, 128],
                  point_base_scale=4,
-                 conv_cfg=None,
-                 norm_cfg=None,
-                 background_label=None,
                  loss_cls=dict(
                      type='FocalLoss',
                      use_sigmoid=True,
@@ -62,57 +55,22 @@ class RepPointsHead(BaseDenseHead):
                  center_init=True,
                  transform_method='moment',
                  moment_mul=0.01,
-                 train_cfg=None,
-                 test_cfg=None):
-        super(RepPointsHead, self).__init__()
-        self.in_channels = in_channels
-        self.num_classes = num_classes
-        self.feat_channels = feat_channels
-        self.point_feat_channels = point_feat_channels
-        self.stacked_convs = stacked_convs
+                 init_cfg=dict(
+                     type='Normal',
+                     layer='Conv2d',
+                     std=0.01,
+                     override=dict(
+                         type='Normal',
+                         name='reppoints_cls_out',
+                         std=0.01,
+                         bias_prob=0.01)),
+                 **kwargs):
         self.num_points = num_points
-        self.gradient_mul = gradient_mul
-        self.point_base_scale = point_base_scale
-        self.point_strides = point_strides
-        self.conv_cfg = conv_cfg
-        self.norm_cfg = norm_cfg
-        self.train_cfg = train_cfg
-        self.test_cfg = test_cfg
-
-        self.background_label = (
-            num_classes if background_label is None else background_label)
-        # background_label should be either 0 or num_classes
-        assert (self.background_label == 0
-                or self.background_label == num_classes)
-
-        self.use_sigmoid_cls = loss_cls.get('use_sigmoid', False)
-        self.sampling = loss_cls['type'] not in ['FocalLoss']
-        self.loss_cls = build_loss(loss_cls)
-        self.loss_bbox_init = build_loss(loss_bbox_init)
-        self.loss_bbox_refine = build_loss(loss_bbox_refine)
-        if self.train_cfg:
-            self.init_assigner = build_assigner(self.train_cfg.init.assigner)
-            self.refine_assigner = build_assigner(
-                self.train_cfg.refine.assigner)
-            # use PseudoSampler when sampling is False
-            if self.sampling and hasattr(self.train_cfg, 'sampler'):
-                sampler_cfg = self.train_cfg.sampler
-            else:
-                sampler_cfg = dict(type='PseudoSampler')
-            self.sampler = build_sampler(sampler_cfg, context=self)
+        self.point_feat_channels = point_feat_channels
         self.use_grid_points = use_grid_points
         self.center_init = center_init
-        self.transform_method = transform_method
-        if self.transform_method == 'moment':
-            self.moment_transfer = nn.Parameter(
-                data=torch.zeros(2), requires_grad=True)
-            self.moment_mul = moment_mul
-        if self.use_sigmoid_cls:
-            self.cls_out_channels = self.num_classes
-        else:
-            self.cls_out_channels = self.num_classes + 1
-        self.point_generators = [PointGenerator() for _ in self.point_strides]
-        # we use deformable conv to extract points features
+
+        # we use deform conv to extract points features
         self.dcn_kernel = int(np.sqrt(num_points))
         self.dcn_pad = int((self.dcn_kernel - 1) / 2)
         assert self.dcn_kernel * self.dcn_kernel == num_points, \
@@ -126,9 +84,47 @@ class RepPointsHead(BaseDenseHead):
         dcn_base_offset = np.stack([dcn_base_y, dcn_base_x], axis=1).reshape(
             (-1))
         self.dcn_base_offset = torch.tensor(dcn_base_offset).view(1, -1, 1, 1)
-        self._init_layers()
+
+        super().__init__(
+            num_classes,
+            in_channels,
+            loss_cls=loss_cls,
+            init_cfg=init_cfg,
+            **kwargs)
+
+        self.gradient_mul = gradient_mul
+        self.point_base_scale = point_base_scale
+        self.point_strides = point_strides
+        self.prior_generator = MlvlPointGenerator(
+            self.point_strides, offset=0.)
+
+        self.sampling = loss_cls['type'] not in ['FocalLoss']
+        if self.train_cfg:
+            self.init_assigner = build_assigner(self.train_cfg.init.assigner)
+            self.refine_assigner = build_assigner(
+                self.train_cfg.refine.assigner)
+            # use PseudoSampler when sampling is False
+            if self.sampling and hasattr(self.train_cfg, 'sampler'):
+                sampler_cfg = self.train_cfg.sampler
+            else:
+                sampler_cfg = dict(type='PseudoSampler')
+            self.sampler = build_sampler(sampler_cfg, context=self)
+        self.transform_method = transform_method
+        if self.transform_method == 'moment':
+            self.moment_transfer = nn.Parameter(
+                data=torch.zeros(2), requires_grad=True)
+            self.moment_mul = moment_mul
+
+        self.use_sigmoid_cls = loss_cls.get('use_sigmoid', False)
+        if self.use_sigmoid_cls:
+            self.cls_out_channels = self.num_classes
+        else:
+            self.cls_out_channels = self.num_classes + 1
+        self.loss_bbox_init = build_loss(loss_bbox_init)
+        self.loss_bbox_refine = build_loss(loss_bbox_refine)
 
     def _init_layers(self):
+        """Initialize layers of the head."""
         self.relu = nn.ReLU(inplace=True)
         self.cls_convs = nn.ModuleList()
         self.reg_convs = nn.ModuleList()
@@ -153,9 +149,10 @@ class RepPointsHead(BaseDenseHead):
                     conv_cfg=self.conv_cfg,
                     norm_cfg=self.norm_cfg))
         pts_out_dim = 4 if self.use_grid_points else 2 * self.num_points
-        self.reppoints_cls_conv = DeformConv(self.feat_channels,
-                                             self.point_feat_channels,
-                                             self.dcn_kernel, 1, self.dcn_pad)
+        self.reppoints_cls_conv = DeformConv2d(self.feat_channels,
+                                               self.point_feat_channels,
+                                               self.dcn_kernel, 1,
+                                               self.dcn_pad)
         self.reppoints_cls_out = nn.Conv2d(self.point_feat_channels,
                                            self.cls_out_channels, 1, 1, 0)
         self.reppoints_pts_init_conv = nn.Conv2d(self.feat_channels,
@@ -163,32 +160,19 @@ class RepPointsHead(BaseDenseHead):
                                                  1, 1)
         self.reppoints_pts_init_out = nn.Conv2d(self.point_feat_channels,
                                                 pts_out_dim, 1, 1, 0)
-        self.reppoints_pts_refine_conv = DeformConv(self.feat_channels,
-                                                    self.point_feat_channels,
-                                                    self.dcn_kernel, 1,
-                                                    self.dcn_pad)
+        self.reppoints_pts_refine_conv = DeformConv2d(self.feat_channels,
+                                                      self.point_feat_channels,
+                                                      self.dcn_kernel, 1,
+                                                      self.dcn_pad)
         self.reppoints_pts_refine_out = nn.Conv2d(self.point_feat_channels,
                                                   pts_out_dim, 1, 1, 0)
-
-    def init_weights(self):
-        for m in self.cls_convs:
-            normal_init(m.conv, std=0.01)
-        for m in self.reg_convs:
-            normal_init(m.conv, std=0.01)
-        bias_cls = bias_init_with_prob(0.01)
-        normal_init(self.reppoints_cls_conv, std=0.01)
-        normal_init(self.reppoints_cls_out, std=0.01, bias=bias_cls)
-        normal_init(self.reppoints_pts_init_conv, std=0.01)
-        normal_init(self.reppoints_pts_init_out, std=0.01)
-        normal_init(self.reppoints_pts_refine_conv, std=0.01)
-        normal_init(self.reppoints_pts_refine_out, std=0.01)
 
     def points2bbox(self, pts, y_first=True):
         """Converting the points set into bounding box.
 
         :param pts: the input points sets (fields), each points
             set (fields) is represented as 2n scalar.
-        :param y_first: if y_fisrt=True, the point set is represented as
+        :param y_first: if y_first=True, the point set is represented as
             [y1, x1, y2, x2 ... yn, xn], otherwise the point set is
             represented as [x1, y1, x2, y2 ... xn, yn].
         :return: each points set is converting to a bbox [x1, y1, x2, y2].
@@ -268,7 +252,11 @@ class RepPointsHead(BaseDenseHead):
         ], 1)
         return grid_yx, regressed_bbox
 
+    def forward(self, feats):
+        return multi_apply(self.forward_single, feats)
+
     def forward_single(self, x):
+        """Forward feature map of a single FPN level."""
         dcn_base_offset = self.dcn_base_offset.type_as(x)
         # If we use center_init, the initial reppoints is from center points.
         # If we use bounding bbox representation, the initial reppoints is
@@ -307,12 +295,13 @@ class RepPointsHead(BaseDenseHead):
                 pts_out_refine, bbox_out_init.detach())
         else:
             pts_out_refine = pts_out_refine + pts_out_init.detach()
-        return cls_out, pts_out_init, pts_out_refine
 
-    def forward(self, feats):
-        return multi_apply(self.forward_single, feats)
+        if self.training:
+            return cls_out, pts_out_init, pts_out_refine
+        else:
+            return cls_out, self.points2bbox(pts_out_refine)
 
-    def get_points(self, featmap_sizes, img_metas):
+    def get_points(self, featmap_sizes, img_metas, device):
         """Get points according to feature map sizes.
 
         Args:
@@ -323,37 +312,27 @@ class RepPointsHead(BaseDenseHead):
             tuple: points of each image, valid flags of each image
         """
         num_imgs = len(img_metas)
-        num_levels = len(featmap_sizes)
 
         # since feature map sizes of all images are the same, we only compute
         # points center for one time
-        multi_level_points = []
-        for i in range(num_levels):
-            points = self.point_generators[i].grid_points(
-                featmap_sizes[i], self.point_strides[i])
-            multi_level_points.append(points)
+        multi_level_points = self.prior_generator.grid_priors(
+            featmap_sizes, device=device, with_stride=True)
         points_list = [[point.clone() for point in multi_level_points]
                        for _ in range(num_imgs)]
 
         # for each image, we compute valid flags of multi level grids
         valid_flag_list = []
         for img_id, img_meta in enumerate(img_metas):
-            multi_level_flags = []
-            for i in range(num_levels):
-                point_stride = self.point_strides[i]
-                feat_h, feat_w = featmap_sizes[i]
-                h, w = img_meta['pad_shape'][:2]
-                valid_feat_h = min(int(np.ceil(h / point_stride)), feat_h)
-                valid_feat_w = min(int(np.ceil(w / point_stride)), feat_w)
-                flags = self.point_generators[i].valid_flags(
-                    (feat_h, feat_w), (valid_feat_h, valid_feat_w))
-                multi_level_flags.append(flags)
+            multi_level_flags = self.prior_generator.valid_flags(
+                featmap_sizes, img_meta['pad_shape'])
             valid_flag_list.append(multi_level_flags)
 
         return points_list, valid_flag_list
 
     def centers_to_bboxes(self, point_list):
-        """Get bboxes according to center points. Only used in MaxIOUAssigner.
+        """Get bboxes according to center points.
+
+        Only used in :class:`MaxIoUAssigner`.
         """
         bbox_list = []
         for i_img, point in enumerate(point_list):
@@ -369,8 +348,7 @@ class RepPointsHead(BaseDenseHead):
         return bbox_list
 
     def offset_to_pts(self, center_list, pred_list):
-        """Change from point offset to point coordinate.
-        """
+        """Change from point offset to point coordinate."""
         pts_list = []
         for i_lvl in range(len(self.point_strides)):
             pts_lvl = []
@@ -396,7 +374,6 @@ class RepPointsHead(BaseDenseHead):
                              gt_bboxes,
                              gt_bboxes_ignore,
                              gt_labels,
-                             label_channels=1,
                              stage='init',
                              unmap_outputs=True):
         inside_flags = valid_flags
@@ -421,7 +398,7 @@ class RepPointsHead(BaseDenseHead):
         pos_proposals = torch.zeros_like(proposals)
         proposals_weights = proposals.new_zeros([num_valid_proposals, 4])
         labels = proposals.new_full((num_valid_proposals, ),
-                                    self.background_label,
+                                    self.num_classes,
                                     dtype=torch.long)
         label_weights = proposals.new_zeros(
             num_valid_proposals, dtype=torch.float)
@@ -434,7 +411,9 @@ class RepPointsHead(BaseDenseHead):
             pos_proposals[pos_inds, :] = proposals[pos_inds, :]
             proposals_weights[pos_inds, :] = 1.0
             if gt_labels is None:
-                labels[pos_inds] = 1
+                # Only rpn gives gt_labels as None
+                # Foreground is the first class
+                labels[pos_inds] = 0
             else:
                 labels[pos_inds] = gt_labels[
                     sampling_result.pos_assigned_gt_inds]
@@ -526,7 +505,6 @@ class RepPointsHead(BaseDenseHead):
              gt_bboxes_ignore_list,
              gt_labels_list,
              stage=stage,
-             label_channels=label_channels,
              unmap_outputs=unmap_outputs)
         # no valid points
         if any([labels is None for labels in all_labels]):
@@ -553,6 +531,7 @@ class RepPointsHead(BaseDenseHead):
         label_weights = label_weights.reshape(-1)
         cls_score = cls_score.permute(0, 2, 3,
                                       1).reshape(-1, self.cls_out_channels)
+        cls_score = cls_score.contiguous()
         loss_cls = self.loss_cls(
             cls_score,
             labels,
@@ -590,12 +569,12 @@ class RepPointsHead(BaseDenseHead):
              img_metas,
              gt_bboxes_ignore=None):
         featmap_sizes = [featmap.size()[-2:] for featmap in cls_scores]
-        assert len(featmap_sizes) == len(self.point_generators)
+        device = cls_scores[0].device
         label_channels = self.cls_out_channels if self.use_sigmoid_cls else 1
 
         # target for initial stage
         center_list, valid_flag_list = self.get_points(featmap_sizes,
-                                                       img_metas)
+                                                       img_metas, device)
         pts_coordinate_preds_init = self.offset_to_pts(center_list,
                                                        pts_preds_init)
         if self.train_cfg.init.assigner['type'] == 'PointAssigner':
@@ -623,7 +602,7 @@ class RepPointsHead(BaseDenseHead):
 
         # target for refinement stage
         center_list, valid_flag_list = self.get_points(featmap_sizes,
-                                                       img_metas)
+                                                       img_metas, device)
         pts_coordinate_preds_refine = self.offset_to_pts(
             center_list, pts_preds_refine)
         bbox_list = []
@@ -676,102 +655,110 @@ class RepPointsHead(BaseDenseHead):
         }
         return loss_dict_all
 
-    def get_bboxes(self,
-                   cls_scores,
-                   pts_preds_init,
-                   pts_preds_refine,
-                   img_metas,
-                   cfg=None,
-                   rescale=False,
-                   nms=True):
-        assert len(cls_scores) == len(pts_preds_refine)
-        bbox_preds_refine = [
-            self.points2bbox(pts_pred_refine)
-            for pts_pred_refine in pts_preds_refine
-        ]
-        num_levels = len(cls_scores)
-        mlvl_points = [
-            self.point_generators[i].grid_points(cls_scores[i].size()[-2:],
-                                                 self.point_strides[i])
-            for i in range(num_levels)
-        ]
-        result_list = []
-        for img_id in range(len(img_metas)):
-            cls_score_list = [
-                cls_scores[i][img_id].detach() for i in range(num_levels)
-            ]
-            bbox_pred_list = [
-                bbox_preds_refine[i][img_id].detach()
-                for i in range(num_levels)
-            ]
-            img_shape = img_metas[img_id]['img_shape']
-            scale_factor = img_metas[img_id]['scale_factor']
-            proposals = self._get_bboxes_single(cls_score_list, bbox_pred_list,
-                                                mlvl_points, img_shape,
-                                                scale_factor, cfg, rescale,
-                                                nms)
-            result_list.append(proposals)
-        return result_list
-
+    # Same as base_dense_head/_get_bboxes_single except self._bbox_decode
     def _get_bboxes_single(self,
-                           cls_scores,
-                           bbox_preds,
-                           mlvl_points,
-                           img_shape,
-                           scale_factor,
+                           cls_score_list,
+                           bbox_pred_list,
+                           score_factor_list,
+                           mlvl_priors,
+                           img_meta,
                            cfg,
                            rescale=False,
-                           nms=True):
+                           with_nms=True,
+                           **kwargs):
+        """Transform outputs of a single image into bbox predictions.
+
+        Args:
+            cls_score_list (list[Tensor]): Box scores from all scale
+                levels of a single image, each item has shape
+                (num_priors * num_classes, H, W).
+            bbox_pred_list (list[Tensor]): Box energies / deltas from
+                all scale levels of a single image, each item has shape
+                (num_priors * 4, H, W).
+            score_factor_list (list[Tensor]): Score factor from all scale
+                levels of a single image. RepPoints head does not need
+                this value.
+            mlvl_priors (list[Tensor]): Each element in the list is
+                the priors of a single level in feature pyramid, has shape
+                (num_priors, 2).
+            img_meta (dict): Image meta info.
+            cfg (mmcv.Config): Test / postprocessing configuration,
+                if None, test_cfg would be used.
+            rescale (bool): If True, return boxes in original image space.
+                Default: False.
+            with_nms (bool): If True, do nms before return boxes.
+                Default: True.
+
+        Returns:
+            tuple[Tensor]: Results of detected bboxes and labels. If with_nms
+                is False and mlvl_score_factor is None, return mlvl_bboxes and
+                mlvl_scores, else return mlvl_bboxes, mlvl_scores and
+                mlvl_score_factor. Usually with_nms is False is used for aug
+                test. If with_nms is True, then return the following format
+
+                - det_bboxes (Tensor): Predicted bboxes with shape \
+                    [num_bboxes, 5], where the first 4 columns are bounding \
+                    box positions (tl_x, tl_y, br_x, br_y) and the 5-th \
+                    column are scores between 0 and 1.
+                - det_labels (Tensor): Predicted labels of the corresponding \
+                    box with shape [num_bboxes].
+        """
         cfg = self.test_cfg if cfg is None else cfg
-        assert len(cls_scores) == len(bbox_preds) == len(mlvl_points)
+        assert len(cls_score_list) == len(bbox_pred_list)
+        img_shape = img_meta['img_shape']
+        nms_pre = cfg.get('nms_pre', -1)
+
         mlvl_bboxes = []
         mlvl_scores = []
-        for i_lvl, (cls_score, bbox_pred, points) in enumerate(
-                zip(cls_scores, bbox_preds, mlvl_points)):
+        mlvl_labels = []
+        for level_idx, (cls_score, bbox_pred, priors) in enumerate(
+                zip(cls_score_list, bbox_pred_list, mlvl_priors)):
             assert cls_score.size()[-2:] == bbox_pred.size()[-2:]
+            bbox_pred = bbox_pred.permute(1, 2, 0).reshape(-1, 4)
+
             cls_score = cls_score.permute(1, 2,
                                           0).reshape(-1, self.cls_out_channels)
             if self.use_sigmoid_cls:
                 scores = cls_score.sigmoid()
             else:
-                scores = cls_score.softmax(-1)
-            bbox_pred = bbox_pred.permute(1, 2, 0).reshape(-1, 4)
-            nms_pre = cfg.get('nms_pre', -1)
-            if nms_pre > 0 and scores.shape[0] > nms_pre:
-                if self.use_sigmoid_cls:
-                    max_scores, _ = scores.max(dim=1)
-                else:
-                    # remind that we set FG labels to [0, num_class-1]
-                    # since mmdet v2.0
-                    # BG cat_id: num_class
-                    max_scores, _ = scores[:, :-1].max(dim=1)
-                _, topk_inds = max_scores.topk(nms_pre)
-                points = points[topk_inds, :]
-                bbox_pred = bbox_pred[topk_inds, :]
-                scores = scores[topk_inds, :]
-            bbox_pos_center = torch.cat([points[:, :2], points[:, :2]], dim=1)
-            bboxes = bbox_pred * self.point_strides[i_lvl] + bbox_pos_center
-            x1 = bboxes[:, 0].clamp(min=0, max=img_shape[1])
-            y1 = bboxes[:, 1].clamp(min=0, max=img_shape[0])
-            x2 = bboxes[:, 2].clamp(min=0, max=img_shape[1])
-            y2 = bboxes[:, 3].clamp(min=0, max=img_shape[0])
-            bboxes = torch.stack([x1, y1, x2, y2], dim=-1)
+                scores = cls_score.softmax(-1)[:, :-1]
+
+            # After https://github.com/open-mmlab/mmdetection/pull/6268/,
+            # this operation keeps fewer bboxes under the same `nms_pre`.
+            # There is no difference in performance for most models. If you
+            # find a slight drop in performance, you can set a larger
+            # `nms_pre` than before.
+            results = filter_scores_and_topk(
+                scores, cfg.score_thr, nms_pre,
+                dict(bbox_pred=bbox_pred, priors=priors))
+            scores, labels, _, filtered_results = results
+
+            bbox_pred = filtered_results['bbox_pred']
+            priors = filtered_results['priors']
+
+            bboxes = self._bbox_decode(priors, bbox_pred,
+                                       self.point_strides[level_idx],
+                                       img_shape)
+
             mlvl_bboxes.append(bboxes)
             mlvl_scores.append(scores)
-        mlvl_bboxes = torch.cat(mlvl_bboxes)
-        if rescale:
-            mlvl_bboxes /= mlvl_bboxes.new_tensor(scale_factor)
-        mlvl_scores = torch.cat(mlvl_scores)
-        if self.use_sigmoid_cls:
-            # Add a dummy background class to the backend when using sigmoid
-            # remind that we set FG labels to [0, num_class-1] since mmdet v2.0
-            # BG cat_id: num_class
-            padding = mlvl_scores.new_zeros(mlvl_scores.shape[0], 1)
-            mlvl_scores = torch.cat([mlvl_scores, padding], dim=1)
-        if nms:
-            det_bboxes, det_labels = multiclass_nms(mlvl_bboxes, mlvl_scores,
-                                                    cfg.score_thr, cfg.nms,
-                                                    cfg.max_per_img)
-            return det_bboxes, det_labels
-        else:
-            return mlvl_bboxes, mlvl_scores
+            mlvl_labels.append(labels)
+
+        return self._bbox_post_process(
+            mlvl_scores,
+            mlvl_labels,
+            mlvl_bboxes,
+            img_meta['scale_factor'],
+            cfg,
+            rescale=rescale,
+            with_nms=with_nms)
+
+    def _bbox_decode(self, points, bbox_pred, stride, max_shape):
+        bbox_pos_center = torch.cat([points[:, :2], points[:, :2]], dim=1)
+        bboxes = bbox_pred * stride + bbox_pos_center
+        x1 = bboxes[:, 0].clamp(min=0, max=max_shape[1])
+        y1 = bboxes[:, 1].clamp(min=0, max=max_shape[0])
+        x2 = bboxes[:, 2].clamp(min=0, max=max_shape[1])
+        y2 = bboxes[:, 3].clamp(min=0, max=max_shape[0])
+        decoded_bboxes = torch.stack([x1, y1, x2, y2], dim=-1)
+        return decoded_bboxes

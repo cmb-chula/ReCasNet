@@ -13,15 +13,22 @@ model = dict(
         bbox_roi_extractor=dict(
             type='SingleRoIExtractor',
             roi_layer=dict(
-                type='RoIAlign', out_size=7, sample_num=2, aligned=False)),
+                type='RoIAlign',
+                output_size=7,
+                sampling_ratio=2,
+                aligned=False)),
         mask_roi_extractor=dict(
             type='SingleRoIExtractor',
             roi_layer=dict(
-                type='RoIAlign', out_size=14, sample_num=2, aligned=False)),
+                type='RoIAlign',
+                output_size=14,
+                sampling_ratio=2,
+                aligned=False)),
         bbox_head=dict(
             bbox_coder=dict(type='LegacyDeltaXYWHBBoxCoder'),
-            loss_bbox=dict(type='SmoothL1Loss', beta=1.0, loss_weight=1.0))))
-# model training and testing settings
-train_cfg = dict(
-    rpn_proposal=dict(nms_post=2000, max_num=2000),
-    rcnn=dict(assigner=dict(match_low_quality=True)))
+            loss_bbox=dict(type='SmoothL1Loss', beta=1.0, loss_weight=1.0))),
+
+    # model training and testing settings
+    train_cfg=dict(
+        rpn_proposal=dict(max_per_img=2000),
+        rcnn=dict(assigner=dict(match_low_quality=True))))

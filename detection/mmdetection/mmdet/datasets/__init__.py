@@ -1,29 +1,31 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 from .builder import DATASETS, PIPELINES, build_dataloader, build_dataset
 from .cityscapes import CityscapesDataset
 from .coco import CocoDataset
+from .coco_panoptic import CocoPanopticDataset
 from .custom import CustomDataset
 from .dataset_wrappers import (ClassBalancedDataset, ConcatDataset,
-                               RepeatDataset)
+                               MultiImageMixDataset, RepeatDataset)
 from .deepfashion import DeepFashionDataset
-from .lvis import LVISDataset
+from .lvis import LVISDataset, LVISV1Dataset, LVISV05Dataset
+from .openimages import OpenImagesChallengeDataset, OpenImagesDataset
 from .samplers import DistributedGroupSampler, DistributedSampler, GroupSampler
+from .utils import (NumClassCheckHook, get_loading_pipeline,
+                    replace_ImageToTensor)
 from .voc import VOCDataset
 from .wider_face import WIDERFaceDataset
 from .xml_style import XMLDataset
-from .CTC import CTCDataset
 from .mitotic import MitoticDataset
 from .mitotic_inference import MitoticInferenceDataset
-from .meningioma import MeningiomaInferenceDataset
-from .mitotic_inference_4_cls import MitoticInferenceDataset4cls
-from .mitotic_4_cls import MitoticDataset4cls
-from .CMV import CMVInferenceDataset
+from .xml_style_legacy import XMLLegacyDataset
+
 __all__ = [
     'CustomDataset', 'XMLDataset', 'CocoDataset', 'DeepFashionDataset',
-    'VOCDataset', 'CityscapesDataset', 'LVISDataset', 'GroupSampler',
-    'CustomDataset', 'XMLDataset', 'CocoDataset', 'VOCDataset',
-    'CityscapesDataset', 'LVISDataset', 'DeepFashionDataset', 'GroupSampler',
-    'DistributedGroupSampler', 'DistributedSampler', 'build_dataloader',
-    'ConcatDataset', 'RepeatDataset', 'ClassBalancedDataset',
-    'WIDERFaceDataset', 'DATASETS', 'PIPELINES', 'build_dataset', 'CTCDataset',
-    'MitoticDataset', 'MitoticInferenceDataset', 'MitoticInferenceDataset4cls', 'MitoticDataset4cls', 'CMVInferenceDataset'
+    'VOCDataset', 'CityscapesDataset', 'LVISDataset', 'LVISV05Dataset',
+    'LVISV1Dataset', 'GroupSampler', 'DistributedGroupSampler',
+    'DistributedSampler', 'build_dataloader', 'ConcatDataset', 'RepeatDataset',
+    'ClassBalancedDataset', 'WIDERFaceDataset', 'DATASETS', 'PIPELINES',
+    'build_dataset', 'replace_ImageToTensor', 'get_loading_pipeline',
+    'NumClassCheckHook', 'CocoPanopticDataset', 'MultiImageMixDataset',
+    'OpenImagesDataset', 'OpenImagesChallengeDataset', 'MitoticDataset', 'MitoticInferenceDataset', 'XMLLegacyDataset'
 ]
