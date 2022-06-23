@@ -35,7 +35,7 @@ python3 tools/train.py configs/mitotic/mitotic_CMC_base.py --work-dir checkpoint
 
 ## Inference
 
-`-d`, `-i`, `-c`, `-m`, `-o` are dataset name, prediction result path, config path, model path, and output destination path, respectively. Remove `-r` flag to remove a window relocation stage. 
+`-d`, `-i`, `-c`, `-m`, `-o` are dataset name, prediction result path, config path, model path, and output destination path, respectively. Remove `-r` flag to disable a window relocation stage. 
 
 The output is in a pickle form that could be directy used for evaluation in the `classification` directory.
 
@@ -56,4 +56,3 @@ python3 tools/data_preparation/format_output.py \
         -m checkpoints/CMC_faster/epoch_8.pth -o test_pred/CMC_faster_relocated.pkl -r
 
 ```
-
