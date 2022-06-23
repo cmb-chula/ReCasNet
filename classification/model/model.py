@@ -2,6 +2,7 @@ import tensorflow as tf
 
 def get_backbone(input_shape = (128, 128, 3), backbone_name = 'effnet'):
     backbone = None
+    print(backbone_name)
     if(backbone_name == 'effnet'):
         import sys
         import efficientnet.tfkeras as efn
@@ -10,8 +11,14 @@ def get_backbone(input_shape = (128, 128, 3), backbone_name = 'effnet'):
         from tensorflow.keras.applications.resnet import ResNet152
         backbone = ResNet152(input_shape = input_shape, weights='imagenet', include_top = False)
     elif(backbone_name == 'densenet'):
-        from tensorflow.keras.applications.densenet import DenseNet121
-        backbone = DenseNet121(input_shape = input_shape, weights='imagenet', include_top = False)
+        from tensorflow.keras.applications.densenet import DenseNet169
+        backbone = DenseNet169(input_shape = input_shape, weights='imagenet', include_top = False)
+    elif(backbone_name == 'convnext'):
+        from tensorflow.keras.applications.convnext import ConvNeXtBase
+        backbone = ConvNeXtBase(input_shape = input_shape, weights='imagenet', include_top = False)
+    elif(backbone_name == 'convnexts'):
+        from tensorflow.keras.applications.convnext import ConvNeXtSmall
+        backbone = ConvNeXtSmall(input_shape = input_shape, weights='imagenet', include_top = False)
 
     return backbone
 

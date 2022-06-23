@@ -10,8 +10,14 @@ def schedule(step, optimizer):
             
     optimizer.lr.assign(init_lr)
 
-NUM_ITERATION = int(24000 *multiplier)
-STEP = [int(15000*multiplier), int(21000*multiplier)]
+# NUM_ITERATION = int(15000 *multiplier)
+# STEP = [int(10000*multiplier), int(13000*multiplier)]
+# val_freq = 1000
+# initial_lr = 5e-4
+# warmup_step = 500
+
+NUM_ITERATION = int(16000)
+STEP = [int(8000*multiplier), int(14000*multiplier)]
 val_freq = 1000
 initial_lr = 5e-4
 warmup_step = 500

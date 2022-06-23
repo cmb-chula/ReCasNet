@@ -140,6 +140,7 @@ classification/data/dataset/
 classification/log/
 classification/converted_model/
 classification/test_pred/
+classification/script/
 etc/
 evaluation/tools/keys/
 evaluation/log/

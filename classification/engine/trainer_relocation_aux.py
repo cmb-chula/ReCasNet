@@ -47,18 +47,29 @@ def do_train(cfg, model, train_loader, val_loader, optimizer=None, scheduler=Non
 
 
         if tf.equal(optimizer.iterations % scheduler.val_freq, 0):
-            y_true, y_pred = [], []
+            y_true_cls, y_true_reg, y_pred_cls, y_pred_reg = [], [], [], []
+
             while(True):
                 val_data = val_loader.grab()
                 if(val_data is None): break
                 X_val, Y_val = val_data
-                y_true += list(Y_val)
-                y_pred += list(test_step(X_val, Y_val, model, loss_fn, optimizer))
-            val_loss_reg = loss_fn[0]( np.array(y_true[0], dtype = np.float32), np.array(y_pred[0], dtype = np.float32) )
-            val_loss_cls = loss_fn[1]( np.array(y_true[1], dtype = np.float32), np.array(y_pred[1], dtype = np.float32) )
-            val_loss = reg_w * val_loss_reg + (1 -  reg_w) * val_loss_cls
+                y_true_reg += list(Y_val[0])
+                y_true_cls += list(Y_val[1])
+                
+                y_pred = list(test_step(X_val, Y_val, model, loss_fn, optimizer))
+                y_pred_reg += list(y_pred[0])
+                y_pred_cls += list(y_pred[1])
+                
+            y_true_reg = np.array(y_true_reg, dtype = np.float32)
+            y_true_cls = np.array(y_true_cls, dtype = np.float32)
+            y_pred_reg = np.array(y_pred_reg, dtype = np.float32)
+            y_pred_cls = np.array(y_pred_cls, dtype = np.float32)
 
-            # print(np.array(val_loss).mean())
+            val_loss_reg = loss_fn[0]( y_true_reg, y_pred_reg )
+            val_loss_cls = loss_fn[1]( y_true_cls, y_pred_cls )
+        
+            val_loss = reg_w * val_loss_cls + (1 -  reg_w) * tf.reduce_mean(val_loss_reg, axis = (1,2))
+
             metric = np.array(val_loss).mean()
             if(metric < best_val_loss and optimizer.iterations > 2000):
                 # print("-->", metric)

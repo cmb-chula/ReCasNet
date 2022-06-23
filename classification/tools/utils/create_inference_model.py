@@ -31,7 +31,7 @@ return_embedding = args["return_embedding"]
 name = args["ckpt_path"]
 cfg = load_config(args["config_path"])
 ckpt_path = 'log/{}/{}'.format(name, 'model')
-log_path = 'log/{}/model_final.h5'.format(name)
+log_path = 'log/{}/model.h5'.format(name)
 cfg.data_cfg.return_embedding = return_embedding
 
 model = build_model(cfg.data_cfg)
