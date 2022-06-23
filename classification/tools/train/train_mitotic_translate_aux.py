@@ -46,25 +46,12 @@ log_path = 'log/{}'.format(name)
 # ---------------------------fetch data------------------------
 
 import pandas as pd
-# data = pd.read_csv('tools/CCMCT_proposed_no_extra.csv')
-# data = pd.read_csv('tools/CCMCT_proposed_v2.csv')
-
-# data = pd.read_csv('tools/obj_center_w_extra_sample_kfold.csv')
-# data = pd.read_csv('tools/CMV_proposed_var_full.csv')
-# data = pd.read_csv('tools/classfication_variance_iter1.csv')
-# data = pd.read_csv('tools/CMC_proposed_var.csv')
-# data = pd.read_csv('tools/var_sample_3model_cov.csv')
 
 data = pd.read_csv('../detection/mmdetection/data/database/{}_trainlabel.csv'.format(dataset))
 
-# data = pd.read_csv('tools/CMC_proposed.csv')
-# data = pd.read_csv('tools/CMC_proposed_final.csv')
-
-# data = pd.read_csv('tools/CMC_proposed_no_extra.csv')
 
 train_csv = data[data['set'] == 'train'].values[:, :4]
 train_data, val_data = train_test_split(train_csv, train_size=0.95, random_state=42)
-
 
 train_loader = make_mitotic_translation_loader_aux(cfg.data_cfg, train_data, is_train=True)
 val_loader = make_mitotic_translation_loader_aux(cfg.data_cfg, val_data, is_train=False)

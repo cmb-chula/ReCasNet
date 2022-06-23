@@ -59,16 +59,14 @@ def do_train(cfg, model, train_loader, val_loader, optimizer=None, scheduler=Non
                 y_pred = list(test_step(X_val, Y_val, model, loss_fn, optimizer))
                 y_pred_reg += list(y_pred[0])
                 y_pred_cls += list(y_pred[1])
-                
+            
             y_true_reg = np.array(y_true_reg, dtype = np.float32)
             y_true_cls = np.array(y_true_cls, dtype = np.float32)
             y_pred_reg = np.array(y_pred_reg, dtype = np.float32)
             y_pred_cls = np.array(y_pred_cls, dtype = np.float32)
-
             val_loss_reg = loss_fn[0]( y_true_reg, y_pred_reg )
             val_loss_cls = loss_fn[1]( y_true_cls, y_pred_cls )
-        
-            val_loss = reg_w * val_loss_cls + (1 -  reg_w) * tf.reduce_mean(val_loss_reg, axis = (1,2))
+            val_loss = reg_w * val_loss_cls + (1 -  reg_w) * val_loss_reg
 
             metric = np.array(val_loss).mean()
             if(metric < best_val_loss and optimizer.iterations > 2000):
