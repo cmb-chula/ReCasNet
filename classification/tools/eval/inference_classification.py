@@ -35,7 +35,7 @@ WSI_path = '../detection/mmdetection/data/dataset/{}/'.format(dataset)
 mode = args["split"]
 seek_data = False if mode == 'test' else True
 metadata = pickle.load( open( input_pkl_path, "rb" ) )
-model = tf.saved_model.load('converted_model/{}'.format(model_path))
+model = tf.saved_model.load(model_path)
 
 def push_to_server(data):
     xmin, ymin, xmax, ymax, conf = data

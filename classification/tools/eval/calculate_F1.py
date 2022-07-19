@@ -48,25 +48,20 @@ def getf1(metadata, det_tresh, mode = 'test'):
     for slide_name in metadata:
         if(metadata[slide_name]['set'] == mode):
             TP, FP, FN = 0,0,0
-#             print(i)
             y_true =  np.array(metadata[slide_name]['bbox'])
             y_pred = np.array(metadata[slide_name]['pred_bbox'])
 
             if(len(y_true) == 0):continue
-            # if(len(y_pred) == 0):continue
 
             scores = y_pred[:, 4] if len(y_pred != 0) else []
-#             y_pred = y_pred[:, :4]
             
-            to_keep = scores>det_tresh
+            to_keep = scores>=det_tresh
             y_pred = y_pred[to_keep]
             
             scores = y_pred[:, 4] if len(y_pred != 0) else []
             y_pred = y_pred[:, :4] if len(y_pred != 0) else []
             
-            y_pred, _ = non_max_suppression_by_distance(y_pred, scores, 17.5, max(det_tresh, 0.05))
-            # y_pred, _ = nms(y_pred, scores,  0.3)
-            # print(y_pred.shape)
+            y_pred, _ = non_max_suppression_by_distance(y_pred, scores, 25, max(det_tresh, 0.05))
 
             center_true_x = (y_true[:,0] + y_true[:, 2]) / 2
             center_true_y = (y_true[:,1] + y_true[:, 3]) / 2
@@ -126,7 +121,6 @@ def getf1(metadata, det_tresh, mode = 'test'):
             sum_FP += FP 
             sum_FN += FN
             
-#             print(len(annotationWasDetected), slide_name)
             
             dummy = []
             metadata[slide_name]['GT'] = [DetectionMatchesAnnotation[x] for x in DetectionMatchesAnnotation]
