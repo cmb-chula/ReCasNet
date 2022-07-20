@@ -13,7 +13,7 @@ cd classification/
 ```
 ## Data 
 
-The extracted patch for classification stage training of the CMC dataset could be downloaded <a href="https://chula-my.sharepoint.com/:f:/g/personal/6372025021_student_chula_ac_th/ErP3lSm3r_JHthDCkMMFr5oB52c1I0bTyVsgKbECDoEm4w?e=RcRnWw" title="">here</a>. The download destination should be the as same the path in the datset config file (see `config/dataset/mitotic_CMC_base.py` for example).
+The extracted patch for classification stage training of CCMCT and CMC datasets could be downloaded <a href="https://chula-my.sharepoint.com/:f:/g/personal/6372025021_student_chula_ac_th/ErP3lSm3r_JHthDCkMMFr5oB52c1I0bTyVsgKbECDoEm4w?e=RcRnWw" title="">HERE</a>. The download destination should be the as same the path in the datset config file (see `config/dataset/mitotic_CMC_base.py` for example).
 
 ## Training
 ### Classification Stage Training
