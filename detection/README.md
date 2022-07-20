@@ -32,6 +32,9 @@ python3 tools/data_preparation/gen_csv.py -d CMC
 python3 tools/data_preparation/generate_training_key.py -d CMC
 ```
 
+You could also download the presampled annotations using the link  <a href="https://chula-my.sharepoint.com/:f:/g/personal/6372025021_student_chula_ac_th/Erzru8nxgjlPji4-Q6BpCkoBETUEx0_e9BA_cjaU-XWpgw?e=pAtdDi" title="">HERE</a>.
+
+
 ## Training
 
 Training and inference script of other models and datasets could be found in `script/`
