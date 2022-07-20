@@ -4,8 +4,7 @@ class_mapper = {
                 'Mitosislike'   :   1,          
                 'Granulocytes' :    2,
                 'Tumorcells' :      3,
-                'certain' : 3,
-                'D' : 3
+                'Disagreement' : 3
                }
 
 test_class_mapper = {
@@ -13,14 +12,13 @@ test_class_mapper = {
                 'Mitosislike'   :   1,          
                 'Granulocytes' :    2,
                 'Tumorcells' :      3,
-                'certain' : 3,
-                'D' : 3
+                'Disagreement' : 3
 
 }
 
 img_size = (128, 128, 3)
 NUM_CLASSES = 4
-dataset_path = 'data/dataset/labelled-pool/CCMCT/train_additional'
+dataset_path = 'data/dataset/labelled-pool/CCMCT/train_disagreement'
 BATCH_SIZE = 64
 return_embedding = False
 pretrain_path = None
