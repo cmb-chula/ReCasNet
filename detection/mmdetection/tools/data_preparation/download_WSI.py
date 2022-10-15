@@ -156,4 +156,3 @@ for fname in tqdm(list(downloadableFiles.keys())):
     urllib.request.urlretrieve(downloadableFiles[fname],fname)
 
 
-https://github.com/DeepPathology/MITOS_WSI_CCMCT/raw/master/databases/MITOS_WSI_CCMCT_ODAEL.sqlite
