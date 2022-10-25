@@ -7,7 +7,7 @@ RUN apt-get update && DEBIAN_FRONTEND="noninteractive" apt-get install -y --no-i
 ENV MMCV_WITH_OPS=1
 
 
-RUN pip install openslide-python
+RUN pip install openslide-python SlideRunner
 # Install MMCV
 RUN pip install --no-cache-dir --upgrade pip wheel setuptools
 # RUN pip install -U openmim
