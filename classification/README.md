@@ -29,7 +29,7 @@ python3 tools/utils/create_inference_model.py -i config/mitotic_CMC_base.py -o C
 
 ```
 python3 tools/train/train_mitotic_translate_aux.py -i config/mitotic_CMC_proposed_translate_aux.py -o CMC/example2 -a 0.9; 
-python3 tools/utils/create_inference_model.py -i config/mitotic_CMC_proposed_translate_aux.py -o CMC/example2 -a 0.9; 
+python3 tools/utils/create_inference_model.py -i config/mitotic_CMC_proposed_translate_aux.py -o CMC/example2; 
 ```
 
 ## Evaluation
