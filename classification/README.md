@@ -39,7 +39,7 @@ The cell-level performance of the pipeline could be evaluated using the followin
 
 ```
 #inference Object Center Adjustment stage
-python3 tools/eval/inference_relcoation.py --dataset CMC -ip ../detection/mmdetection/test_pred/test1.pkl -op ./adj.pkl  -m converted_model/CMC/example2 -c 1 
+python3 tools/eval/inference_center_adjustment.py --dataset CMC -ip ../detection/mmdetection/test_pred/test1.pkl -op ./adj.pkl  -m converted_model/CMC/example2 -c 1 
 
 #inference classifcaiton stage
 python3 tools/eval/inference_classification.py --dataset CMC -ip ./adj.pkl -op ./cls.pkl  -m converted_model/CMC/example -c 1 
